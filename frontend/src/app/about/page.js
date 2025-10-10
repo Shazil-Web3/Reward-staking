@@ -142,8 +142,11 @@ const About = () => {
             </div>
 
             <div className="relative">
-              {/* Timeline Line */}
+              {/* Timeline Line - Desktop */}
               <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary to-secondary hidden md:block" />
+              
+              {/* Timeline Line - Mobile */}
+              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary to-secondary md:hidden" />
 
               <div className="space-y-8">
                 {[
