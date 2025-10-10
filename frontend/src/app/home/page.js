@@ -8,36 +8,66 @@ const Home = () => {
   return (
     <div>
         {/* Hero Section */}
-        <section className="relative overflow-hidden py-20 md:py-32">
+        <section className="relative overflow-hidden py-20 md:py-32 min-h-screen flex items-center">
+          {/* Gradient Background */}
           <div className="absolute inset-0 gradient-hero" />
+          
+          {/* Background Orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-1 w-96 h-96 top-10 left-10" />
+            <div className="orb orb-2 w-80 h-80 bottom-20 right-10" />
+            <div className="orb orb-3 w-64 h-64 top-1/2 left-1/3" />
+            <div className="orb orb-1 w-72 h-72 bottom-10 left-1/2" />
+            <div className="orb orb-2 w-56 h-56 top-20 right-1/4" />
+          </div>
 
           <div className="container relative z-10">
-            <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in">
-              <h1 className="text-5xl md:text-7xl font-bold leading-tight">
-                Welcome to <span className="gradient-text">Staking</span>
-              </h1>
-              <p className="text-xl md:text-2xl text-muted-foreground">
-                The Smart Token Holding System
-              </p>
-              <p className="text-lg md:text-xl max-w-2xl mx-auto">
-                Lock your tokens, qualify through referrals, and earn from the reward pool
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+            <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
+              <div className="space-y-6">
+                <h1 className="text-6xl md:text-8xl font-bold leading-tight">
+                  Welcome to <span className="gradient-text">Staking</span>
+                </h1>
+                <p className="text-2xl md:text-3xl text-muted-foreground font-medium">
+                  The Smart Token Holding System
+                </p>
+                <p className="text-lg md:text-xl max-w-3xl mx-auto text-muted-foreground/80">
+                  Lock your tokens, qualify through referrals, and earn from the reward pool. 
+                  Join thousands of users building wealth through our transparent staking ecosystem.
+                </p>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-6 justify-center pt-8">
                 <Button
                   size="lg"
-                  className="gradient-primary text-white border-0 text-lg px-8"
+                  className="gradient-primary text-white border-0 text-xl px-12 py-6 h-auto hover:scale-105 transition-transform"
                 >
-                  Start Staking <ArrowRight className="ml-2 h-5 w-5" />
+                  Start Staking <ArrowRight className="ml-3 h-6 w-6" />
                 </Button>
                 <Link href="/dashboard">
                   <Button
                     size="lg"
                     variant="outline"
-                    className="text-lg px-8 w-full sm:w-auto"
+                    className="text-xl px-12 py-6 h-auto w-full sm:w-auto hover:bg-primary hover:text-white hover:border-primary transition-all"
                   >
                     View Dashboard
                   </Button>
                 </Link>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-16">
+                <div className="text-center space-y-2">
+                  <div className="text-4xl font-bold gradient-text">$2.5M+</div>
+                  <div className="text-muted-foreground">Total Staked</div>
+                </div>
+                <div className="text-center space-y-2">
+                  <div className="text-4xl font-bold gradient-text">15K+</div>
+                  <div className="text-muted-foreground">Active Users</div>
+                </div>
+                <div className="text-center space-y-2">
+                  <div className="text-4xl font-bold gradient-text">98%</div>
+                  <div className="text-muted-foreground">Success Rate</div>
+                </div>
               </div>
             </div>
           </div>
@@ -86,8 +116,15 @@ const Home = () => {
         </section>
 
         {/* Staking Packages */}
-        <section className="py-20">
-          <div className="container">
+        <section className="py-20 relative overflow-hidden">
+          {/* Section-specific orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-1 w-96 h-96 top-20 left-20" />
+            <div className="orb orb-2 w-72 h-72 bottom-20 right-20" />
+            <div className="orb orb-3 w-56 h-56 top-1/2 right-1/4" />
+          </div>
+          
+          <div className="container relative z-10">
             <div className="text-center space-y-4 mb-12">
               <h2 className="text-4xl md:text-5xl font-bold">Choose Your Package</h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -118,6 +155,83 @@ const Home = () => {
                 lockPeriod="1 to 5 years"
                 referralRequirement="No referrals required"
               />
+            </div>
+          </div>
+        </section>
+
+        {/* Referral System */}
+        <section className="py-20 relative overflow-hidden">
+          {/* Section-specific orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-1 w-72 h-72 top-10 left-1/4" />
+            <div className="orb orb-2 w-64 h-64 bottom-10 right-1/4" />
+            <div className="orb orb-3 w-56 h-56 top-1/2 right-1/3" />
+          </div>
+          
+          <div className="container relative z-10">
+            <div className="max-w-4xl mx-auto space-y-12">
+              <div className="text-center space-y-4">
+                <h2 className="text-4xl md:text-5xl font-bold">Referral System</h2>
+                <p className="text-xl text-muted-foreground">
+                  Build your network and unlock rewards through our referral program
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-8">
+                <Card className="p-8 space-y-6 hover-scale transition-all duration-300 border-2 border-transparent hover:border-primary/20 hover:shadow-glow">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center shadow-lg">
+                      <Users className="h-8 w-8 text-white drop-shadow-sm" />
+                    </div>
+                    <h3 className="text-2xl font-semibold">How Referrals Work</h3>
+                  </div>
+                  <div className="space-y-4 text-muted-foreground">
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                      <p>Share your unique referral link with friends and family</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                      <p>When they purchase a staking package, you both benefit</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                      <p>Meet referral requirements to qualify for reward pool</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                      <p>Track your referrals in your dashboard</p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-8 space-y-6 hover-scale transition-all duration-300 border-2 border-transparent hover:border-secondary/20 hover:shadow-glow">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center shadow-lg">
+                      <TrendingUp className="h-8 w-8 text-white drop-shadow-sm" />
+                    </div>
+                    <h3 className="text-2xl font-semibold">Referral Benefits</h3>
+                  </div>
+                  <div className="space-y-4 text-muted-foreground">
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0" />
+                      <p>Reduced referral requirements for higher packages</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0" />
+                      <p>Early access to new features and packages</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0" />
+                      <p>Priority support for you and your referrals</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-secondary rounded-full mt-2 flex-shrink-0" />
+                      <p>Bonus rewards for top referrers</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
             </div>
           </div>
         </section>
@@ -196,8 +310,16 @@ const Home = () => {
         </section>
 
         {/* Tokenomics */}
-        <section className="py-20">
-          <div className="container">
+        <section className="py-20 relative overflow-hidden">
+          {/* Section-specific orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-2 w-88 h-88 top-20 right-20" />
+            <div className="orb orb-1 w-64 h-64 bottom-20 left-20" />
+            <div className="orb orb-3 w-48 h-48 top-1/2 left-1/2" />
+            <div className="orb orb-1 w-40 h-40 top-1/4 right-1/3" />
+          </div>
+          
+          <div className="container relative z-10">
             <div className="max-w-4xl mx-auto space-y-8">
               <div className="text-center space-y-4">
                 <h2 className="text-4xl md:text-5xl font-bold">Tokenomics</h2>
@@ -280,7 +402,7 @@ const Home = () => {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="text-lg px-8 border-white text-white hover:bg-white hover:text-primary w-full sm:w-auto"
+                    className="text-lg px-8 border-white text-black bg-white hover:bg-primary hover:text-white hover:border-primary w-full sm:w-auto"
                   >
                     Login to Dashboard
                   </Button>

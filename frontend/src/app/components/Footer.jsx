@@ -1,10 +1,8 @@
-import { Github, Twitter, MessageCircle } from "lucide-react";
-
 const Footer = () => {
   return (
     <footer className="border-t gradient-secondary py-12">
       <div className="container mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           
           {/* About Section */}
           <div className="space-y-4">
@@ -45,41 +43,6 @@ const Footer = () => {
                 </a>
               </li>
             </ul>
-          </div>
-
-          {/* Social Links */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Connect With Us</h3>
-            <div className="flex gap-4">
-              <a
-                href="https://twitter.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Visit our Twitter"
-                title="Twitter"
-                className="h-10 w-10 flex items-center justify-center rounded-lg bg-background hover:bg-primary hover:text-white transition-all"
-              >
-                <Twitter className="h-5 w-5" />
-              </a>
-              <a
-                href="https://github.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Visit our GitHub"
-                title="GitHub"
-                className="h-10 w-10 flex items-center justify-center rounded-lg bg-background hover:bg-primary hover:text-white transition-all"
-              >
-                <Github className="h-5 w-5" />
-              </a>
-              <a
-                href="#"
-                aria-label="Join our community"
-                title="Community Chat"
-                className="h-10 w-10 flex items-center justify-center rounded-lg bg-background hover:bg-primary hover:text-white transition-all"
-              >
-                <MessageCircle className="h-5 w-5" />
-              </a>
-            </div>
           </div>
         </div>
 

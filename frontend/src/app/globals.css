@@ -55,6 +55,10 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --orb-1: 16 100% 60%;
+    --orb-2: 140 65% 50%;
+    --orb-3: 16 100% 60%;
   }
 
   .dark {
@@ -94,6 +98,10 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 240 10% 20%;
     --sidebar-ring: 16 100% 60%;
+
+    --orb-1: 16 100% 60%;
+    --orb-2: 140 65% 50%;
+    --orb-3: 16 100% 60%;
   }
 }
 
@@ -155,5 +163,42 @@ All colors MUST be HSL.
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
+  }
+
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: -1;
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .orb-1 {
+    background: radial-gradient(circle, hsl(var(--orb-1)) 0%, transparent 70%);
+    animation-delay: 0s;
+  }
+  
+  .orb-2 {
+    background: radial-gradient(circle, hsl(var(--orb-2)) 0%, transparent 70%);
+    animation-delay: 2s;
+  }
+  
+  .orb-3 {
+    background: radial-gradient(circle, hsl(var(--orb-3)) 0%, transparent 70%);
+    animation-delay: 4s;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
   }
 }

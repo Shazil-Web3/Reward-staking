@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins } from "lucide-react";
+import { Lock } from "lucide-react";
 import { Button } from "./ui/button";
 
 const Header = () => {
@@ -21,7 +21,7 @@ const Header = () => {
           aria-label="Go to homepage"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary">
-            <Coins className="h-6 w-6 text-white" />
+            <Lock className="h-6 w-6 text-white" />
           </div>
           <span className="text-xl font-bold gradient-text">Staking</span>
         </Link>

@@ -23,8 +23,15 @@ const About = () => {
         </section>
 
         {/* Project Overview */}
-        <section className="py-20">
-          <div className="container max-w-4xl mx-auto space-y-8">
+        <section className="py-20 relative overflow-hidden">
+          {/* Section-specific orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-2 w-80 h-80 top-10 right-20" />
+            <div className="orb orb-1 w-64 h-64 bottom-20 left-10" />
+            <div className="orb orb-3 w-48 h-48 top-1/2 left-1/3" />
+          </div>
+          
+          <div className="container max-w-4xl mx-auto space-y-8 relative z-10">
             <div className="text-center space-y-4">
               <h2 className="text-4xl font-bold">Project Overview</h2>
               <p className="text-xl text-muted-foreground leading-relaxed">
@@ -117,8 +124,16 @@ const About = () => {
         </section>
 
         {/* Roadmap */}
-        <section className="py-20">
-          <div className="container max-w-5xl mx-auto space-y-12">
+        <section className="py-20 relative overflow-hidden">
+          {/* Section-specific orbs */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="orb orb-1 w-96 h-96 top-20 left-20" />
+            <div className="orb orb-2 w-72 h-72 bottom-20 right-20" />
+            <div className="orb orb-3 w-56 h-56 top-1/2 right-1/4" />
+            <div className="orb orb-1 w-40 h-40 top-1/4 left-1/2" />
+          </div>
+          
+          <div className="container max-w-5xl mx-auto space-y-12 relative z-10">
             <div className="text-center space-y-4">
               <h2 className="text-4xl font-bold">Milestones & Roadmap</h2>
               <p className="text-xl text-muted-foreground">
@@ -193,10 +208,10 @@ const About = () => {
                     className="relative flex gap-8 items-start"
                   >
                     <div
-                      className={`h-16 w-16 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 shadow-lg ${
+                      className={`h-16 w-16 rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0 shadow-lg ${
                         phase.completed
-                          ? "gradient-primary"
-                          : "bg-muted text-foreground"
+                          ? "gradient-primary text-white"
+                          : "bg-muted text-black border-2 border-primary"
                       }`}
                     >
                       {phase.num}
