@@ -23,9 +23,12 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useState } from "react";
+import { useWallet } from '@/hooks/useWallet';
+import StakingInterface from '@/app/components/StakingInterface';
 
 const Dashboard = () => {
   const [copied, setCopied] = useState(false);
+  const { address, isConnected, chain, balance, balanceLoading } = useWallet();
 
   const handleCopyReferral = () => {
     navigator.clipboard.writeText("https://staking.app/ref/user123");
@@ -56,26 +59,60 @@ const Dashboard = () => {
             </p>
           </div>
 
-          {/* User Profile Card */}
+          {/* Wallet Profile Card */}
           <Card className="p-6 gradient-border">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center">
-                  <User className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">John Doe</h2>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Wallet className="h-4 w-4" />
-                    <code className="text-xs">0x742d...9a3f</code>
+            {isConnected ? (
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center">
+                    <Wallet className="h-8 w-8 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Wallet Connected</h2>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Wallet className="h-4 w-4" />
+                      <code className="text-xs">
+                        {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'N/A'}
+                      </code>
+                    </div>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <span>Network:</span>
+                        <span className="font-medium">{chain?.name || 'Unknown'}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <span>Balance:</span>
+                        <span className="font-medium">
+                          {balanceLoading ? 'Loading...' : balance ? `${parseFloat(balance.formatted).toFixed(4)} ${balance.symbol}` : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
+                <Badge className="bg-green-100 text-green-800 border border-green-200 px-6 py-2 text-sm">
+                  ✓ Connected
+                </Badge>
               </div>
-              <Badge className="gradient-primary text-white border-0 px-6 py-2 text-sm">
-                Pro Package
-              </Badge>
-            </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <Wallet className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Connect Your Wallet</h2>
+                <p className="text-muted-foreground mb-4">
+                  Please connect your wallet to access the dashboard and start staking.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Click the "Connect Wallet" button in the header to get started.
+                </p>
+              </div>
+            )}
           </Card>
+
+          {/* Staking Interface - Only show when wallet is connected */}
+          {isConnected && (
+            <StakingInterface />
+          )}
 
           {/* Stats Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
