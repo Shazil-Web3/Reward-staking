@@ -29,8 +29,8 @@ const PackageCard = ({
         {/* Header */}
         <div className="text-center space-y-2">
           <h3 className="text-2xl font-bold">{title}</h3>
-          <div className="text-4xl font-bold gradient-text">{amount}</div>
-          <p className="text-sm text-muted-foreground">Minimum Stake Amount</p>
+          <div className={`font-bold gradient-text ${amount.length > 10 ? 'text-2xl' : 'text-4xl'}`}>{amount}</div>
+          <p className="text-sm text-muted-foreground">{title === 'Custom Package' ? 'Flexible Stake Amount' : 'Minimum Stake Amount'}</p>
         </div>
 
         {/* Details */}

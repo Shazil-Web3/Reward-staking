@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Lock, Menu, X } from "lucide-react";
-import { Button } from "./ui/button";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useState } from "react";
 
 const Header = () => {
@@ -47,30 +47,36 @@ const Header = () => {
             </div>
             
             {/* Mobile Connect Wallet - Right */}
-            <Button
-              variant="default"
-              className="gradient-primary text-white border-0 hover:opacity-90 transition-opacity text-sm px-4"
-            >
-              Connect Wallet
-            </Button>
+            <div className="scale-90">
+              <ConnectButton
+                chainStatus="none"
+                showBalance={false}
+                accountStatus={{
+                  smallScreen: "avatar",
+                  largeScreen: "full",
+                }}
+              />
+            </div>
           </div>
           
           {/* Desktop Layout */}
-          <div className="hidden md:flex items-center justify-between w-full">
+          <div className="hidden md:grid md:grid-cols-3 items-center w-full">
             {/* Logo - Desktop */}
-            <Link
-              href="/"
-              className="flex items-center space-x-2 hover:scale-105 transition-transform"
-              aria-label="Go to homepage"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary">
-                <Lock className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-bold gradient-text">Staking</span>
-            </Link>
+            <div className="flex justify-start">
+              <Link
+                href="/"
+                className="flex items-center space-x-2 hover:scale-105 transition-transform"
+                aria-label="Go to homepage"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary">
+                  <Lock className="h-6 w-6 text-white" />
+                </div>
+                <span className="text-xl font-bold gradient-text">Staking</span>
+              </Link>
+            </div>
 
-            {/* Desktop Navigation */}
-            <nav className="flex items-center gap-6">
+            {/* Desktop Navigation - Always centered */}
+            <nav className="flex items-center justify-center gap-6">
               <Link
                 href="/"
                 className={`text-sm font-medium transition-colors hover:text-primary ${
@@ -97,13 +103,17 @@ const Header = () => {
               </Link>
             </nav>
 
-            {/* Desktop Connect Wallet */}
-            <Button
-              variant="default"
-              className="gradient-primary text-white border-0 hover:opacity-90 transition-opacity"
-            >
-              Connect Wallet
-            </Button>
+            {/* Desktop Connect Wallet - Always right */}
+            <div className="flex justify-end">
+              <ConnectButton
+                chainStatus="icon"
+                showBalance={true}
+                accountStatus={{
+                  smallScreen: "avatar",
+                  largeScreen: "full",
+                }}
+              />
+            </div>
           </div>
         </div>
 

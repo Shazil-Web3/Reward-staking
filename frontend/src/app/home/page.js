@@ -37,19 +37,21 @@ const Home = () => {
               </div>
               
               <div className="flex flex-col sm:flex-row gap-6 justify-center pt-8">
-                <Button
-                  size="lg"
-                  className="gradient-primary text-white border-0 text-xl px-12 py-6 h-auto hover:scale-105 transition-transform"
-                >
-                  Start Staking <ArrowRight className="ml-3 h-6 w-6" />
-                </Button>
                 <Link href="/dashboard">
+                  <Button
+                    size="lg"
+                    className="gradient-primary text-white border-0 text-xl px-12 py-6 h-auto hover:scale-105 transition-transform w-full sm:w-auto"
+                  >
+                    Start Staking <ArrowRight className="ml-3 h-6 w-6" />
+                  </Button>
+                </Link>
+                <Link href="/about">
                   <Button
                     size="lg"
                     variant="outline"
                     className="text-xl px-12 py-6 h-auto w-full sm:w-auto hover:bg-primary hover:text-white hover:border-primary transition-all"
                   >
-                    View Dashboard
+                    About Us
                   </Button>
                 </Link>
               </div>
@@ -132,7 +134,7 @@ const Home = () => {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
               <PackageCard
                 title="Starter Package"
                 amount="$50"
@@ -154,6 +156,13 @@ const Home = () => {
                 fee="10%"
                 lockPeriod="1 to 5 years"
                 referralRequirement="No referrals required"
+              />
+              <PackageCard
+                title="Custom Package"
+                amount="Any amount above $50"
+                fee="10%"
+                lockPeriod="1 to 5 years"
+                referralRequirement="Varies by stake amount"
               />
             </div>
           </div>
@@ -395,16 +404,18 @@ const Home = () => {
                 Choose your package, refer users, and unlock rewards
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                <Button size="lg" variant="secondary" className="text-lg px-8">
-                  Start Staking
-                </Button>
                 <Link href="/dashboard">
+                  <Button size="lg" variant="secondary" className="text-lg px-8 w-full sm:w-auto">
+                    Start Staking
+                  </Button>
+                </Link>
+                <Link href="/about">
                   <Button
                     size="lg"
                     variant="outline"
                     className="text-lg px-8 border-white text-black bg-white hover:bg-primary hover:text-white hover:border-primary w-full sm:w-auto"
                   >
-                    Login to Dashboard
+                    About Us
                   </Button>
                 </Link>
               </div>
