@@ -3,16 +3,24 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node indexer.js",
+    "dev": "node indexer.js",
+    "api": "node api-server.js",
+    "admin": "node admin-cli.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@supabase/supabase-js": "^2.87.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "ethers": "^6.16.0",
     "express": "^5.1.0",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.6.0",
     "mongoose": "^8.19.1"
   }
 }

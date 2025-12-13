@@ -22,20 +22,76 @@ import {
   Calendar,
   DollarSign,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from '@/hooks/useWallet';
 import StakingInterface from '@/app/components/StakingInterface';
+import { supabase } from '@/lib/supabase';
 
 const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
+  const [userData, setUserData] = useState(null);
+  const [stakes, setStakes] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isConnected && address) {
+      fetchUserData();
+    } else {
+        setUserData(null);
+        setStakes([]);
+    }
+  }, [isConnected, address]);
+
+  const fetchUserData = async () => {
+    setLoading(true);
+    try {
+        // Fetch User Info
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('wallet_address', address.toLowerCase())
+            .single();
+        
+        if (user) setUserData(user);
+
+        // Fetch Stakes
+        const { data: userStakes, error: stakesError } = await supabase
+            .from('stakes')
+            .select('*')
+            .eq('user_address', address.toLowerCase())
+            .order('created_at', { ascending: false });
+
+        if (userStakes) setStakes(userStakes);
+
+    } catch (e) {
+        console.error("Error loading dashboard data", e);
+    } finally {
+        setLoading(false);
+    }
+  };
 
   const handleCopyReferral = () => {
-    navigator.clipboard.writeText("https://staking.app/ref/user123");
+    if (!address) return;
+    const link = `${window.location.origin}/ref/${address}`;
+    navigator.clipboard.writeText(link);
     setCopied(true);
-    // Simple alert instead of toast for now
-    alert("Referral link copied!");
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Calculate Stats
+  const latestStake = stakes.length > 0 ? stakes[0] : null;
+  const lockPeriodYears = latestStake ? Math.floor((new Date(latestStake.end_time) - new Date(latestStake.start_time)) / (1000 * 60 * 60 * 24 * 365)) : 0;
+  
+  // Time remaining helper
+  const getTimeRemaining = (endTime) => {
+    if (!endTime) return "0d";
+    const now = new Date();
+    const end = new Date(endTime);
+    const diff = end - now;
+    if (diff <= 0) return "Unlocked";
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    return `${days} days`;
   };
 
   return (
@@ -45,9 +101,6 @@ const Dashboard = () => {
           <div className="orb orb-1 w-96 h-96 top-20 -left-20" />
           <div className="orb orb-2 w-80 h-80 top-60 right-10" />
           <div className="orb orb-3 w-72 h-72 bottom-40 left-1/3" />
-          <div className="orb orb-1 w-64 h-64 bottom-20 -right-10" />
-          <div className="orb orb-2 w-56 h-56 top-1/3 left-10" />
-          <div className="orb orb-3 w-48 h-48 top-1/4 right-1/3" />
         </div>
         
         <div className="container max-w-7xl space-y-8 relative z-10">
@@ -102,9 +155,6 @@ const Dashboard = () => {
                 <p className="text-muted-foreground mb-4">
                   Please connect your wallet to access the dashboard and start staking.
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Click the "Connect Wallet" button in the header to get started.
-                </p>
               </div>
             )}
           </Card>
@@ -114,231 +164,178 @@ const Dashboard = () => {
             <StakingInterface />
           )}
 
-          {/* Stats Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                title: "Amount Staked",
-                value: "$100",
-                icon: <DollarSign className="h-6 w-6 text-primary" />,
-                bg: "bg-primary/10",
-              },
-              {
-                title: "Lock Period",
-                value: "3 Years",
-                icon: <Calendar className="h-6 w-6 text-secondary" />,
-                bg: "bg-secondary/10",
-              },
-              {
-                title: "Time Remaining",
-                value: "2y 8m",
-                icon: <Clock className="h-6 w-6 text-primary" />,
-                bg: "bg-primary/10",
-              },
-              {
-                title: "Total Rewards",
-                value: "$15.50",
-                icon: <TrendingUp className="h-6 w-6 text-secondary" />,
-                bg: "bg-secondary/10",
-              },
-            ].map((stat, i) => (
-              <Card key={i} className="p-6 transition-transform hover:scale-105">
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`h-12 w-12 rounded-lg flex items-center justify-center ${stat.bg}`}
-                  >
-                    {stat.icon}
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          {/* Staking Summary & Referral Stats */}
-          <div className="grid lg:grid-cols-2 gap-6">
-            {/* Staking Summary */}
-            <Card className="p-6 space-y-6">
-              <h3 className="text-xl font-semibold flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
-                Staking Summary
-              </h3>
-              <div className="space-y-4">
-                {[
-                  { label: "Package Type", value: "Pro Package ($100)" },
-                  { label: "Start Date", value: "Jan 15, 2024" },
-                  { label: "End Date", value: "Jan 15, 2027" },
-                  { label: "Staking Fee", value: "$10 (10%)" },
-                  { label: "Net Staked", value: "$90", highlight: true },
-                ].map((item, i) => (
-                  <div
-                    key={i}
-                    className={`flex justify-between items-center ${
-                      i < 4 ? "pb-3 border-b" : ""
-                    }`}
-                  >
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span
-                      className={`font-semibold ${
-                        item.highlight ? "text-primary" : ""
-                      }`}
-                    >
-                      {item.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Referral Stats */}
-            <Card className="p-6 space-y-6">
-              <h3 className="text-xl font-semibold flex items-center gap-2">
-                <Users className="h-5 w-5 text-secondary" />
-                Referral Stats
-              </h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b">
-                  <span className="text-muted-foreground">Total Referrals</span>
-                  <span className="font-semibold text-2xl">3 / 5</span>
-                </div>
-                <div className="flex justify-between items-center pb-3 border-b">
-                  <span className="text-muted-foreground">
-                    Qualification Status
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className="border-orange-500 text-orange-500"
-                  >
-                    In Progress
-                  </Badge>
+          {isConnected && (
+            <>
+                {/* Stats Grid */}
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                    {
+                        title: "Amount Staked",
+                        value: `$${userData?.total_staked?.toLocaleString() || '0'}`,
+                        icon: <DollarSign className="h-6 w-6 text-primary" />,
+                        bg: "bg-primary/10",
+                    },
+                    {
+                        title: "Lock Period",
+                        value: latestStake ? `${lockPeriodYears} Years` : "N/A",
+                        icon: <Calendar className="h-6 w-6 text-secondary" />,
+                        bg: "bg-secondary/10",
+                    },
+                    {
+                        title: "Time Remaining",
+                        value: latestStake ? getTimeRemaining(latestStake.end_time) : "-",
+                        icon: <Clock className="h-6 w-6 text-primary" />,
+                        bg: "bg-primary/10",
+                    },
+                    {
+                        title: "Total Rewards",
+                        value: "TBD", // Requires Reward Calculation logic
+                        icon: <TrendingUp className="h-6 w-6 text-secondary" />,
+                        bg: "bg-secondary/10",
+                    },
+                    ].map((stat, i) => (
+                    <Card key={i} className="p-6 transition-transform hover:scale-105">
+                        <div className="flex items-center gap-4">
+                        <div
+                            className={`h-12 w-12 rounded-lg flex items-center justify-center ${stat.bg}`}
+                        >
+                            {stat.icon}
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">{stat.title}</p>
+                            <p className="text-2xl font-bold">{stat.value}</p>
+                        </div>
+                        </div>
+                    </Card>
+                    ))}
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">
-                    Your Referral Link
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value="https://staking.app/ref/user123"
-                      readOnly
-                      className="flex-1 px-3 py-2 rounded-lg border bg-muted text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleCopyReferral}
-                      className="gradient-primary text-white border-0"
-                      aria-label="Copy referral link"
-                    >
-                      {copied ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
+                {/* Staking Summary & Referral Stats */}
+                <div className="grid lg:grid-cols-2 gap-6">
+                    {/* Staking Summary */}
+                    <Card className="p-6 space-y-6">
+                    <h3 className="text-xl font-semibold flex items-center gap-2">
+                        <DollarSign className="h-5 w-5 text-primary" />
+                        Staking Summary
+                    </h3>
+                    <div className="space-y-4">
+                        {latestStake ? (
+                             <>
+                                <div className="flex justify-between items-center pb-3 border-b">
+                                    <span className="text-muted-foreground">Package ID</span>
+                                    <span className="font-semibold">{latestStake.package_id}</span>
+                                </div>
+                                <div className="flex justify-between items-center pb-3 border-b">
+                                    <span className="text-muted-foreground">Start Date</span>
+                                    <span className="font-semibold">{new Date(latestStake.start_time).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex justify-between items-center pb-3 border-b">
+                                    <span className="text-muted-foreground">End Date</span>
+                                    <span className="font-semibold">{new Date(latestStake.end_time).toLocaleDateString()}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-muted-foreground">Net Staked</span>
+                                    <span className="font-semibold text-primary">${latestStake.amount}</span>
+                                </div>
+                             </>
+                        ) : (
+                            <div className="text-center text-muted-foreground py-4">No active stakes found.</div>
+                        )}
+                    </div>
+                    </Card>
+
+                    {/* Referral Stats */}
+                    <Card className="p-6 space-y-6">
+                    <h3 className="text-xl font-semibold flex items-center gap-2">
+                        <Users className="h-5 w-5 text-secondary" />
+                        Referral Stats
+                    </h3>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center pb-3 border-b">
+                        <span className="text-muted-foreground">Total Referrals</span>
+                        <span className="font-semibold text-2xl">{userData?.direct_referrals_count || 0}</span>
+                        </div>
+
+                        <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">
+                            Your Referral Link
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                            type="text"
+                            value={address ? `${window.location.origin}/ref/${address}` : 'Connect wallet to generate link'}
+                            readOnly
+                            className="flex-1 px-3 py-2 rounded-lg border bg-muted text-sm"
+                            />
+                            <Button
+                            size="sm"
+                            onClick={handleCopyReferral}
+                            className="gradient-primary text-white border-0"
+                            aria-label="Copy referral link"
+                            disabled={!address}
+                            >
+                            {copied ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                                <Copy className="h-4 w-4" />
+                            )}
+                            </Button>
+                        </div>
+                        </div>
+                    </div>
+                    </Card>
                 </div>
 
-                <p className="text-sm text-muted-foreground">
-                  Refer <strong>2 more users</strong> to qualify for the reward
-                  pool
-                </p>
-              </div>
-            </Card>
-          </div>
+                 {/* Transaction History */}
+                <Card className="p-6 space-y-6">
+                    <h3 className="text-xl font-semibold">Transaction History</h3>
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Tx Hash</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {stakes.length > 0 ? (
+                            stakes.map((tx, i) => (
+                                <TableRow key={i}>
+                                    <TableCell className="font-medium">Stake</TableCell>
+                                    <TableCell>${tx.amount}</TableCell>
+                                    <TableCell>{new Date(tx.created_at).toLocaleDateString()}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={tx.status === 'active' ? 'text-green-600 border-green-200' : ''}>
+                                            {tx.status}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <a 
+                                            href={`https://testnet.bscscan.com/tx/${tx.tx_hash}`} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            className="text-xs text-blue-500 hover:underline"
+                                        >
+                                            View
+                                        </a>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                                    No transaction history.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                    </Table>
+                </Card>
+            </>
+          )}
 
-          {/* Reward Pool Status */}
-          <Card className="p-6 space-y-6">
-            <h3 className="text-xl font-semibold flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Reward Pool Status
-            </h3>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Qualification Status
-                </p>
-                <Badge
-                  variant="outline"
-                  className="border-orange-500 text-orange-500 px-4 py-1"
-                >
-                  Not Yet Qualified
-                </Badge>
-                <p className="text-xs text-muted-foreground">
-                  Complete 2 more referrals
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Reward Earned</p>
-                <p className="text-3xl font-bold gradient-text">$15.50</p>
-                <p className="text-xs text-muted-foreground">
-                  Projected reward if qualified
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Next Distribution</p>
-                <p className="text-2xl font-semibold">7 days</p>
-                <p className="text-xs text-muted-foreground">March 1, 2025</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Transaction History */}
-          <Card className="p-6 space-y-6">
-            <h3 className="text-xl font-semibold">Transaction History</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Fee Deducted</TableHead>
-                  <TableHead>Reward Earned</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[
-                  {
-                    type: "Stake",
-                    amount: "$100",
-                    fee: "-$10",
-                    reward: "-",
-                    date: "Jan 15, 2024",
-                    feeColor: "text-destructive",
-                  },
-                  {
-                    type: "Reward",
-                    amount: "-",
-                    fee: "-",
-                    reward: "+$8.50",
-                    date: "Feb 1, 2024",
-                    rewardColor: "text-secondary",
-                  },
-                  {
-                    type: "Reward",
-                    amount: "-",
-                    fee: "-",
-                    reward: "+$7.00",
-                    date: "Feb 15, 2024",
-                    rewardColor: "text-secondary",
-                  },
-                ].map((tx, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{tx.type}</TableCell>
-                    <TableCell>{tx.amount}</TableCell>
-                    <TableCell className={tx.feeColor}>{tx.fee}</TableCell>
-                    <TableCell className={tx.rewardColor}>{tx.reward}</TableCell>
-                    <TableCell>{tx.date}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
         </div>
     </div>
   );

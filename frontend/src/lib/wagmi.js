@@ -2,24 +2,39 @@
 
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import {
-  arbitrum,
-  base,
   mainnet,
-  optimism,
-  polygon,
   sepolia,
 } from 'wagmi/chains';
 
+// Celo Alfajores Testnet
+const celoAlfajores = {
+  id: 44787,
+  name: 'Celo Alfajores Testnet',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'CELO',
+    symbol: 'CELO',
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://alfajores-forno.celo-testnet.org'],
+    },
+    public: {
+      http: ['https://alfajores-forno.celo-testnet.org'],
+    },
+  },
+  blockExplorers: {
+    default: { name: 'CeloScan', url: 'https://alfajores.celoscan.io' },
+  },
+  testnet: true,
+};
+
 export const config = getDefaultConfig({
   appName: 'Staking Platform',
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID', // You'll need to get this from WalletConnect Cloud
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
   chains: [
-    mainnet,
-    polygon,
-    optimism,
-    arbitrum,
-    base,
+    celoAlfajores,
     ...(process.env.NODE_ENV === 'development' ? [sepolia] : []),
   ],
-  ssr: true, // If your dApp uses server side rendering (SSR)
+  ssr: true,
 });

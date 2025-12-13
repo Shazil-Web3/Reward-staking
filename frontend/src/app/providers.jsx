@@ -7,6 +7,8 @@ import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowki
 import { config } from '@/lib/wagmi';
 import { useState } from 'react';
 
+import { StakingProvider } from '@/context/context';
+
 export function Providers({ children }) {
   const [queryClient] = useState(() => new QueryClient());
 
@@ -30,7 +32,9 @@ export function Providers({ children }) {
           }}
           modalSize="compact"
         >
-          {children}
+          <StakingProvider>
+            {children}
+          </StakingProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

@@ -1,9 +1,20 @@
+'use client';
+
+import { usePathname } from 'next/navigation';
+
 const Footer = () => {
+  const pathname = usePathname();
+
+  // Hide footer on admin routes
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <footer className="border-t gradient-secondary py-12">
       <div className="container mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
+
           {/* About Section */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">About Staking</h3>
