@@ -75,11 +75,18 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
     try {
         const { address, epochId } = req.params;
 
-        const { data: epoch, error } = await supabase
+        let query = supabase
             .from('epoch_data')
-            .select('*')
-            .eq('id', epochId)
-            .single();
+            .select('*');
+
+        if (epochId === 'latest') {
+            query = query.order('created_at', { ascending: false }).limit(1);
+        } else {
+            query = query.eq('id', epochId);
+        }
+
+        const { data: epochs, error } = await query;
+        const epoch = epochs && epochs.length > 0 ? epochs[0] : null;
 
         if (error || !epoch) {
             return res.status(404).json({ error: 'Epoch not found' });
@@ -95,12 +102,21 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
             return res.status(404).json({ error: 'Address not eligible for this epoch' });
         }
 
+        // Check if already claimed
+        const { data: claim } = await supabase
+            .from('reward_claims')
+            .select('id')
+            .eq('user_address', address.toLowerCase())
+            .eq('epoch_id', epoch.id)
+            .single();
+
         res.json({
             epochId: epoch.id,
             address: address,
             amount: userReward.amount,
             proof: userProof,
-            merkleRoot: epoch.merkle_root
+            merkleRoot: epoch.merkle_root,
+            claimed: !!claim
         });
 
     } catch (error) {
@@ -135,6 +151,53 @@ app.post('/api/admin/generate-epoch', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/admin/pool-stats
+ * Returns current pool balance and accrued fees from the contract
+ */
+app.get('/api/admin/pool-stats', async (req, res) => {
+    try {
+        const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+        const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';
+        
+        if (!CONTRACT_ADDRESS) throw new Error("Contract address not configured");
+
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        
+        // Minimal ABI for stats
+        const ABI = [
+            "function usdtFeesAccrued() view returns (uint256)",
+            "function yourToken() view returns (address)",
+            "function fundRewardTokens(address token, uint256 amount) external" // Just for reference
+        ];
+        
+        // ERC20 ABI for balance
+        const ERC20_ABI = [
+            "function balanceOf(address account) view returns (uint256)"
+        ];
+
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+        
+        // 1. Get Accrued Fees
+        const fees = await contract.usdtFeesAccrued();
+        
+        // 2. Get Token Address & Balance
+        const tokenAddress = await contract.yourToken();
+        const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+        const balance = await tokenContract.balanceOf(CONTRACT_ADDRESS);
+
+        res.json({
+            fees: fees.toString(),
+            poolBalance: balance.toString(),
+            tokenAddress: tokenAddress
+        });
+
+    } catch (error) {
+        console.error("Pool Stats Error:", error);
+        res.status(500).json({ error: error.message, stack: error.stack });
     }
 });
 

@@ -3,6 +3,7 @@
 import { useWallet } from '@/hooks/useWallet';
 import { Button } from '@/app/components/ui/button';
 import { ShieldAlert, Wallet } from 'lucide-react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useEffect, useState } from 'react';
 
 const ADMIN_WALLET = "0x728d2415877ecc58c87f5bc3e5f759eb5ac5ab40";
@@ -31,15 +32,7 @@ const AdminGuard = ({ children }) => {
                         Please connect your wallet to access the admin dashboard.
                     </p>
                     <div className="flex justify-center">
-                        {connectors.map((connector) => (
-                            <Button
-                                key={connector.uid}
-                                onClick={() => connect({ connector })}
-                                className="gradient-primary text-white"
-                            >
-                                Connect Wallet
-                            </Button>
-                        ))}
+                        <ConnectButton label="Connect Wallet" />
                     </div>
                 </div>
             </div>

@@ -41,6 +41,16 @@ create table public.epochs (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- REWARD CLAIMS TABLE
+create table public.reward_claims (
+  id uuid default uuid_generate_v4() primary key,
+  user_address text references public.users(wallet_address) not null,
+  epoch_id integer references public.epochs(id),
+  amount numeric not null,
+  claimed_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  tx_hash text
+);
+
 -- Insert initial reward pool row
 insert into public.reward_pool (total_supply, current_balance) values (0, 0);
 
@@ -48,11 +58,12 @@ insert into public.reward_pool (total_supply, current_balance) values (0, 0);
 alter table public.users enable row level security;
 alter table public.stakes enable row level security;
 alter table public.reward_pool enable row level security;
+alter table public.reward_claims enable row level security;
 
--- Allow public read access (dashboard needs to read)
+-- Allow public read access
 create policy "Allow public read users" on public.users for select using (true);
 create policy "Allow public read stakes" on public.stakes for select using (true);
 create policy "Allow public read reward_pool" on public.reward_pool for select using (true);
+create policy "Allow public read reward_claims" on public.reward_claims for select using (true);
 
--- Backend (Service Role) typically bypasses RLS, but if using anon key for writes (not recommended), add write policies.
--- We assume backend uses SERVICE_ROLE_KEY which bypasses RLS.
+-- Backend (Service Role) typically bypasses RLS

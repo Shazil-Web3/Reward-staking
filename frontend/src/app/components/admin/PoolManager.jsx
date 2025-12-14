@@ -5,7 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { useState, useEffect } from 'react';
 import { Coins, Wallet, AlertCircle, Loader2, CheckCircle, ArrowRight, RefreshCw, DollarSign } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { useAccount, useWriteContract, useReadContract, usePublicClient } from 'wagmi';
+import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { parseEther, formatUnits, parseUnits } from 'viem';
 import StakingArtifact from '@/context/staking.json';
 
@@ -28,40 +28,33 @@ const PoolManager = () => {
 
     // --- Contract Reads ---
 
-    // 1. Get Accrued USDT Fees (Escrow)
-    const { data: accruedFees, refetch: refetchFees } = useReadContract({
-        address: STAKING_CONTRACT_ADDRESS,
-        abi: StakingArtifact.abi,
-        functionName: 'usdtFeesAccrued',
-        query: { enabled: !!STAKING_CONTRACT_ADDRESS }
-    });
+    // State for Data
+    const [accruedFees, setAccruedFees] = useState(0n);
+    const [poolBalance, setPoolBalance] = useState(0n);
+    const [rewardTokenAddress, setRewardTokenAddress] = useState(null);
 
-    // 2. Get Reward Token Address
-    const { data: rewardTokenAddress } = useReadContract({
-        address: STAKING_CONTRACT_ADDRESS,
-        abi: StakingArtifact.abi,
-        functionName: 'yourToken',
-        query: { enabled: !!STAKING_CONTRACT_ADDRESS }
-    });
+    const fetchPoolStats = async () => {
+        try {
+            const res = await fetch(`${BACKEND_API_URL}/api/admin/pool-stats`);
+            if (!res.ok) throw new Error('Failed to fetch pool stats');
+            const data = await res.json();
 
-    // 3. Get Contract's Reward Token Balance (Available for Distribution)
-    const { data: poolBalance, refetch: refetchPool } = useReadContract({
-        address: rewardTokenAddress,
-        abi: [{ // Minimal ERC20 ABI
-            name: 'balanceOf',
-            type: 'function',
-            stateMutability: 'view',
-            inputs: [{ name: 'account', type: 'address' }],
-            outputs: [{ name: '', type: 'uint256' }]
-        }],
-        functionName: 'balanceOf',
-        args: [STAKING_CONTRACT_ADDRESS],
-        query: { enabled: !!rewardTokenAddress }
-    });
+            setAccruedFees(BigInt(data.fees));
+            setPoolBalance(BigInt(data.poolBalance));
+            setRewardTokenAddress(data.tokenAddress);
+        } catch (err) {
+            console.error("Stats fetch error:", err);
+            // Optionally set error State to show in UI
+            if (err.message) setError(err.message);
+        }
+    };
+
+    useEffect(() => {
+        fetchPoolStats();
+    }, []);
 
     const refreshData = () => {
-        refetchFees();
-        refetchPool();
+        fetchPoolStats();
     };
 
     // --- Actions ---

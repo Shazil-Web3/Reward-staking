@@ -14,6 +14,7 @@ const ABI = [
     "event ReferrerSet(address indexed user, address indexed referrer)",
     "event Withdrawn(address indexed user, uint256 indexed lockId, uint256 tokenAmount)",
     "event RewardTokensFunded(address indexed token, uint256 amount)",
+    "event Claimed(uint256 indexed epochId, address indexed user, uint256 amount)",
     "function getLocks(address user) external view returns (tuple(uint256 amountToken, uint64 start, uint64 end, uint8 packageId, bool withdrawn)[])"
 ];
 
@@ -23,7 +24,14 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 }
 
 // --- INITIALIZATION ---
-const provider = new ethers.JsonRpcProvider(RPC_URL);
+// Use StaticJsonRpcProvider or configure polling for stability
+const provider = new ethers.JsonRpcProvider(RPC_URL, undefined, {
+    staticNetwork: true,
+    polling: true,
+    pollingInterval: 4000
+});
+
+// Resilient contract instance
 const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -144,12 +152,27 @@ const handleWithdrawn = async (user, lockId, amount) => {
     }
 };
 
+const handleClaimed = async (epochId, user, amount, event) => {
+    console.log(`🎁 Claimed: ${user} - Epoch: ${epochId} - Amount: ${ethers.formatEther(amount)}`);
+    try {
+        await supabase.from('reward_claims').insert({
+            user_address: user.toLowerCase(),
+            epoch_id: Number(epochId),
+            amount: parseFloat(ethers.formatEther(amount)),
+            tx_hash: event.log.transactionHash
+        });
+    } catch (err) {
+        console.error("Error handling Claimed:", err);
+    }
+};
+
 // --- LISTENERS ---
 
 const startListening = () => {
     contract.on('Locked', handleLocked);
     contract.on('ReferrerSet', handleReferrerSet);
     contract.on('Withdrawn', handleWithdrawn);
+    contract.on('Claimed', handleClaimed);
     
     // contract.on('RewardTokensFunded', ...) - Add logic to update reward_pool table
 

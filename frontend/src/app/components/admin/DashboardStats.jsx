@@ -30,13 +30,18 @@ const DashboardStats = () => {
                     .from('users')
                     .select('*', { count: 'exact', head: true });
 
-                // Fetch Reward Pool
-                const { data: poolData, error: poolError } = await supabase
-                    .from('reward_pool')
-                    .select('current_balance')
-                    .single();
-
-                const rewardBalance = poolData ? poolData.current_balance : 0;
+                // Fetch Reward Pool (Live from Backend API)
+                let rewardBalance = 0;
+                try {
+                    const poolRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/admin/pool-stats`);
+                    if (poolRes.ok) {
+                        const poolData = await poolRes.json();
+                        // poolBalance is in wei, format it
+                        rewardBalance = parseFloat(poolData.poolBalance) / 1e18; // Assuming 18 decimals
+                    }
+                } catch (e) {
+                    console.error("Pool stats fetch error", e);
+                }
 
                 setStats([
                     {
