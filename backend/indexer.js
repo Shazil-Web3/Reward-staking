@@ -176,8 +176,15 @@ const startListening = () => {
     
     // contract.on('RewardTokensFunded', ...) - Add logic to update reward_pool table
 
-    // Keep process alive
-    process.stdin.resume();
+    // Keep process alive if running standalone
+    if (require.main === module) {
+        process.stdin.resume();
+    }
 };
 
-startListening();
+// Only auto-start if run directly
+if (require.main === module) {
+    startListening();
+}
+
+module.exports = { startListening };

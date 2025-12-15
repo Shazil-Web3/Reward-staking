@@ -80,16 +80,46 @@ const StakingInterface = () => {
   };
 
   const handleStakeWithReferral = async () => {
-    // Validate referral address if provided
-    if (referralAddress && !isAddress(referralAddress)) {
-      setReferralError('Invalid referral address');
-      return;
-    }
+    let finalReferrer = "0x0000000000000000000000000000000000000000";
 
-    // Don't allow self-referral
-    if (referralAddress && referralAddress.toLowerCase() === address?.toLowerCase()) {
-      setReferralError('You cannot use your own address as referrer');
-      return;
+    // If referral input is provided, process it
+    if (referralAddress && referralAddress.trim()) {
+      const input = referralAddress.trim();
+
+      // Check if it's a wallet address (starts with 0x and is 42 chars)
+      if (isAddress(input)) {
+        // It's already a wallet address
+        if (input.toLowerCase() === address?.toLowerCase()) {
+          setReferralError('You cannot use your own address as referrer');
+          return;
+        }
+        finalReferrer = input;
+      } else {
+        // It's a referral code - resolve it to wallet address
+        try {
+          setReferralError('');
+          const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/referral/resolve/${input}`);
+
+          if (!response.ok) {
+            setReferralError('Invalid referral code');
+            return;
+          }
+
+          const data = await response.json();
+
+          // Check for self-referral
+          if (data.walletAddress.toLowerCase() === address?.toLowerCase()) {
+            setReferralError('You cannot use your own referral code');
+            return;
+          }
+
+          finalReferrer = data.walletAddress;
+        } catch (error) {
+          console.error('Error resolving referral code:', error);
+          setReferralError('Failed to verify referral code');
+          return;
+        }
+      }
     }
 
     // Close popup and proceed with stake
@@ -105,9 +135,6 @@ const StakingInterface = () => {
       const packageId = packageData.id;
       const durationSeconds = selectedYears * 365 * 24 * 60 * 60;
 
-      // Use provided referral or zero address
-      const finalReferrer = referralAddress || "0x0000000000000000000000000000000000000000";
-
       setTxStatus('Approving USDT...');
       const receipt = await stake(
         amount.toString(),
@@ -122,7 +149,7 @@ const StakingInterface = () => {
         setTxStatus('');
         setSelectedPackage('custom');
         setShowCustomInput(true);
-        // Keep referral address for future stakes
+        // Keep referral address/code for future stakes
       }, 3000);
 
     } catch (err) {
@@ -305,12 +332,12 @@ const StakingInterface = () => {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Do you have a referral address? Enter it below to help your referrer earn rewards!
+              Do you have a referral code or address? Enter it below to help your referrer earn rewards!
             </p>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Referral Address (Optional)
+                Referral Code or Wallet Address (Optional)
               </label>
               <input
                 type="text"
@@ -319,7 +346,7 @@ const StakingInterface = () => {
                   setReferralAddress(e.target.value);
                   setReferralError('');
                 }}
-                placeholder="0x..."
+                placeholder="e.g., 728D24 or 0x..."
                 className={`w-full p-3 border rounded-lg bg-background text-sm font-mono ${referralError ? 'border-red-500' : ''
                   }`}
               />
@@ -327,7 +354,7 @@ const StakingInterface = () => {
                 <p className="text-red-500 text-xs">{referralError}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Leave empty if you don't have a referral address
+                Enter a 6-character referral code or a full wallet address
               </p>
             </div>
 

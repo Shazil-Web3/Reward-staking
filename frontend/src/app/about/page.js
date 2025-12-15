@@ -15,7 +15,7 @@ const About = () => {
         {/* Hero Section */}
         <section className="py-20 gradient-secondary">
           <div className="container max-w-4xl mx-auto text-center space-y-6">
-            <h1 className="text-5xl md:text-6xl font-bold">About Staking</h1>
+            <h1 className="text-5xl md:text-6xl font-bold">About CryptoCommunity</h1>
             <p className="text-xl text-muted-foreground">
               Building the future of transparent token holding ecosystems
             </p>
@@ -35,7 +35,7 @@ const About = () => {
             <div className="text-center space-y-4">
               <h2 className="text-4xl font-bold">Project Overview</h2>
               <p className="text-xl text-muted-foreground leading-relaxed">
-                Staking is a transparent and secure token holding ecosystem built
+                CryptoCommunity is a transparent and secure token holding ecosystem built
                 to encourage long-term holding through structured staking
                 packages and a fair reward distribution system.
               </p>
@@ -45,7 +45,7 @@ const About = () => {
               <p>
                 We believe in creating a sustainable crypto economy where
                 holders are rewarded for their loyalty and commitment. Unlike
-                traditional staking platforms, Staking focuses on transparent
+                traditional staking platforms, CryptoCommunity focuses on transparent
                 lock mechanisms and community-driven rewards.
               </p>
               <p>
@@ -248,7 +248,7 @@ const About = () => {
             <div className="grid md:grid-cols-3 gap-6">
               {[
                 {
-                  text: `"Staking has been a game-changer for my crypto holdings. The transparent reward system and easy-to-use platform make it perfect for long-term investors."`,
+                  text: `"CryptoCommunity has been a game-changer for my crypto holdings. The transparent reward system and easy-to-use platform make it perfect for long-term investors."`,
                   initials: "SM",
                   name: "Sarah M.",
                   role: "Pro Package Holder",

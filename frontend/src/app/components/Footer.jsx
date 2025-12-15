@@ -17,7 +17,7 @@ const Footer = () => {
 
           {/* About Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">About Staking</h3>
+            <h3 className="text-lg font-semibold">About CryptoCommunity</h3>
             <p className="text-sm text-muted-foreground">
               A transparent and secure token holding ecosystem built to encourage
               long-term holding through structured staking packages and fair reward
@@ -59,7 +59,7 @@ const Footer = () => {
 
         {/* Footer Bottom */}
         <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} Staking. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} CryptoCommunity. All rights reserved.</p>
         </div>
       </div>
     </footer>

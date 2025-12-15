@@ -114,8 +114,14 @@ const PoolManager = () => {
                 body: JSON.stringify({ totalAmount: amountInWei })
             });
 
-            if (!response.ok) throw new Error('Backend generation failed');
+            // Get the response body first
             const result = await response.json();
+
+            // Check if request failed and show actual error
+            if (!response.ok) {
+                const errorMessage = result.error || 'Backend generation failed';
+                throw new Error(errorMessage);
+            }
 
             setStatus(`Merkle Root generated. Submitting to blockchain...`);
 

@@ -67,6 +67,88 @@ app.get('/api/rewards/eligible', async (req, res) => {
     }
 });
 
+// Resolve referral code to wallet address
+app.get('/api/referral/resolve/:code', async (req, res) => {
+    try {
+        const code = req.params.code.toUpperCase();
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('wallet_address, referral_code')
+            .eq('referral_code', code)
+            .single();
+
+        if (error || !user) {
+            return res.status(404).json({ error: 'Referral code not found' });
+        }
+
+        res.json({ 
+            referralCode: user.referral_code,
+            walletAddress: user.wallet_address 
+        });
+    } catch (error) {
+        console.error('Error resolving referral code:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Register wallet address (create user entry if doesn't exist)
+app.post('/api/wallet/register', async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        
+        if (!walletAddress) {
+            return res.status(400).json({ error: 'Wallet address required' });
+        }
+
+        const address = walletAddress.toLowerCase();
+        
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('wallet_address, referral_code')
+            .eq('wallet_address', address)
+            .single();
+
+        if (existingUser) {
+            return res.json({ 
+                exists: true,
+                referralCode: existingUser.referral_code,
+                walletAddress: existingUser.wallet_address 
+            });
+        }
+
+        // Create new user entry
+        const referralCode = walletAddress.substring(2, 8).toUpperCase();
+        
+        const { data: newUser, error } = await supabase
+            .from('users')
+            .insert({
+                wallet_address: address,
+                referral_code: referralCode,
+                total_staked: 0,
+                direct_referrals_count: 0
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error creating user:', error);
+            return res.status(500).json({ error: 'Failed to register wallet' });
+        }
+
+        res.json({ 
+            exists: false,
+            created: true,
+            referralCode: newUser.referral_code,
+            walletAddress: newUser.wallet_address 
+        });
+    } catch (error) {
+        console.error('Error registering wallet:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 /**
  * GET /api/rewards/proof/:address/:epochId
  * Returns Merkle proof for a specific address and epoch
@@ -222,11 +304,19 @@ app.get('/api/epochs', async (req, res) => {
     }
 });
 
+const { startListening } = require('./indexer');
+
 app.listen(PORT, () => {
     console.log(`\n🚀 Reward API Server running on http://localhost:${PORT}`);
     console.log(`📡 Endpoints:`);
     console.log(`   GET /api/rewards/eligible`);
     console.log(`   GET /api/rewards/proof/:address/:epochId`);
+    console.log(`   GET /api/referral/resolve/:code`);
+    console.log(`   POST /api/wallet/register`);
     console.log(`   POST /api/admin/generate-epoch`);
     console.log(`   GET /api/epochs\n`);
+
+    // Start Indexer
+    console.log(`\n🔄 Starting Blockchain Indexer...`);
+    startListening();
 });

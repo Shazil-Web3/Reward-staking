@@ -30,7 +30,7 @@ const celoAlfajores = {
 };
 
 export const config = getDefaultConfig({
-  appName: 'Staking Platform',
+  appName: 'CryptoCommunity Platform',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
   chains: [
     celoAlfajores,

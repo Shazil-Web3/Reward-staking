@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Staking Platform",
+  title: "CryptoCommunity Platform",
   description: "A transparent and secure token holding ecosystem",
 };
 

@@ -11,14 +11,14 @@ const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const isActive = (path) => pathname === path;
-  
+
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center">
-          
+
           {/* Mobile Layout */}
           <div className="md:hidden flex items-center justify-between w-full">
             {/* Left side - Hamburger + Logo */}
@@ -35,17 +35,17 @@ const Header = () => {
                   <Menu className="h-6 w-6" />
                 )}
               </button>
-              
+
               {/* Mobile Logo - Right next to hamburger */}
               <Link
                 href="/"
                 className="flex items-center hover:scale-105 transition-transform"
                 aria-label="Go to homepage"
               >
-                <span className="text-xl font-bold gradient-text">Staking</span>
+                <span className="text-xl font-bold gradient-text">CryptoCommunity</span>
               </Link>
             </div>
-            
+
             {/* Mobile Connect Wallet - Right */}
             <div className="scale-90">
               <ConnectButton
@@ -58,7 +58,7 @@ const Header = () => {
               />
             </div>
           </div>
-          
+
           {/* Desktop Layout */}
           <div className="hidden md:grid md:grid-cols-3 items-center w-full">
             {/* Logo - Desktop */}
@@ -71,7 +71,7 @@ const Header = () => {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary">
                   <Lock className="h-6 w-6 text-white" />
                 </div>
-                <span className="text-xl font-bold gradient-text">Staking</span>
+                <span className="text-xl font-bold gradient-text">CryptoCommunity</span>
               </Link>
             </div>
 
@@ -79,25 +79,22 @@ const Header = () => {
             <nav className="flex items-center justify-center gap-6">
               <Link
                 href="/"
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive("/") ? "text-primary" : "text-muted-foreground"
-                }`}
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/") ? "text-primary" : "text-muted-foreground"
+                  }`}
               >
                 Home
               </Link>
               <Link
                 href="/dashboard"
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive("/dashboard") ? "text-primary" : "text-muted-foreground"
-                }`}
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/dashboard") ? "text-primary" : "text-muted-foreground"
+                  }`}
               >
                 Dashboard
               </Link>
               <Link
                 href="/about"
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive("/about") ? "text-primary" : "text-muted-foreground"
-                }`}
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary" : "text-muted-foreground"
+                  }`}
               >
                 About Us
               </Link>
@@ -124,27 +121,24 @@ const Header = () => {
               <Link
                 href="/"
                 onClick={() => setIsMenuOpen(false)}
-                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${
-                  isActive("/") ? "text-primary bg-primary/10" : "text-muted-foreground"
-                }`}
+                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${isActive("/") ? "text-primary bg-primary/10" : "text-muted-foreground"
+                  }`}
               >
                 Home
               </Link>
               <Link
                 href="/dashboard"
                 onClick={() => setIsMenuOpen(false)}
-                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${
-                  isActive("/dashboard") ? "text-primary bg-primary/10" : "text-muted-foreground"
-                }`}
+                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${isActive("/dashboard") ? "text-primary bg-primary/10" : "text-muted-foreground"
+                  }`}
               >
                 Dashboard
               </Link>
               <Link
                 href="/about"
                 onClick={() => setIsMenuOpen(false)}
-                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${
-                  isActive("/about") ? "text-primary bg-primary/10" : "text-muted-foreground"
-                }`}
+                className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-muted ${isActive("/about") ? "text-primary bg-primary/10" : "text-muted-foreground"
+                  }`}
               >
                 About Us
               </Link>

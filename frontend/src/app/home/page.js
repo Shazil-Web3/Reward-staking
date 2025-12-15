@@ -25,7 +25,7 @@ const Home = () => {
             <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
               <div className="space-y-6">
                 <h1 className="text-6xl md:text-8xl font-bold leading-tight">
-                  Welcome to <span className="gradient-text">Staking</span>
+                  Welcome to <span className="gradient-text">CryptoCommunity</span>
                 </h1>
                 <p className="text-2xl md:text-3xl text-muted-foreground font-medium">
                   The Smart Token Holding System
@@ -42,7 +42,7 @@ const Home = () => {
                     size="lg"
                     className="gradient-primary text-white border-0 text-xl px-12 py-6 h-auto hover:scale-105 transition-transform w-full sm:w-auto"
                   >
-                    Start Staking <ArrowRight className="ml-3 h-6 w-6" />
+                    Start Trading <ArrowRight className="ml-3 h-6 w-6" />
                   </Button>
                 </Link>
                 <Link href="/about">
@@ -80,7 +80,7 @@ const Home = () => {
           <div className="container">
             <div className="max-w-4xl mx-auto space-y-8">
               <div className="text-center space-y-4">
-                <h2 className="text-4xl md:text-5xl font-bold">What is Staking?</h2>
+                <h2 className="text-4xl md:text-5xl font-bold">What is CryptoCommunity?</h2>
                 <p className="text-xl text-muted-foreground">
                   A transparent holding system, not a traditional yield-generating stake
                 </p>
@@ -398,7 +398,7 @@ const Home = () => {
           <div className="container">
             <div className="max-w-4xl mx-auto text-center space-y-8">
               <h2 className="text-4xl md:text-5xl font-bold">
-                Start Your Staking Journey Today
+                Start Your CryptoCommunity Journey Today
               </h2>
               <p className="text-xl opacity-90">
                 Choose your package, refer users, and unlock rewards
@@ -406,7 +406,7 @@ const Home = () => {
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
                 <Link href="/dashboard">
                   <Button size="lg" variant="secondary" className="text-lg px-8 w-full sm:w-auto">
-                    Start Staking
+                    Start Trading
                   </Button>
                 </Link>
                 <Link href="/about">

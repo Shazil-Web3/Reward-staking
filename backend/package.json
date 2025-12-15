@@ -4,9 +4,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node indexer.js",
-    "dev": "node indexer.js",
-    "api": "node api-server.js",
+    "start": "node api-server.js",
+    "dev": "node api-server.js",
+    "indexer-only": "node indexer.js",
     "admin": "node admin-cli.js"
   },
   "keywords": [],

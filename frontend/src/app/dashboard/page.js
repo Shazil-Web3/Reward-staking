@@ -51,6 +51,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (isConnected && address) {
+      // Register wallet to ensure referral code exists in database
+      registerWallet();
       fetchUserData();
       checkRewardStatus();
 
@@ -83,6 +85,20 @@ const Dashboard = () => {
         setStakes([]);
     }
   }, [isConnected, address]);
+
+  const registerWallet = async () => {
+    if (!address) return;
+    try {
+      await fetch(`${BACKEND_API_URL}/api/wallet/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: address })
+      });
+    } catch (error) {
+      console.log('Wallet registration info:', error);
+      // Non-critical, don't show error to user
+    }
+  };
 
   const fetchUserData = async () => {
     setLoading(true);
@@ -168,10 +184,23 @@ const Dashboard = () => {
       }
   };
 
+
+  // Generate referral code from wallet address (always available)
+  const getReferralCode = () => {
+    if (userData?.referral_code) {
+      return userData.referral_code;
+    }
+    // If no userData yet, generate from wallet address
+    if (address) {
+      return address.substring(2, 8).toUpperCase();
+    }
+    return null;
+  };
+
   const handleCopyReferral = () => {
-    if (!address) return;
-    const link = `${window.location.origin}/ref/${address}`;
-    navigator.clipboard.writeText(link);
+    const code = getReferralCode();
+    if (!code) return;
+    navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -353,24 +382,24 @@ const Dashboard = () => {
                         </div>
                     </Card>
 
-                    {/* Referral Link Card */}
+                    {/* Referral Code Card */}
                     <Card className="p-6 space-y-6">
                         <h3 className="text-xl font-semibold flex items-center gap-2">
                             <Users className="h-5 w-5 text-blue-500" />
-                            Grow Your Network
+                            Share Your Referral Code
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                            Share your link to reach eligibility targets for the Reward Pool.
+                            Share your code for others to use when staking to reach eligibility targets.
                         </p>
                         
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Your Referral Link</label>
+                            <label className="text-sm font-medium">Your Referral Code</label>
                             <div className="flex gap-2">
                                 <input
                                     type="text"
-                                    value={address ? `${window.location.origin}/ref/${address}` : '...'}
+                                    value={getReferralCode() || '...'}
                                     readOnly
-                                    className="flex-1 px-3 py-2 rounded-lg border bg-muted text-sm font-mono"
+                                    className="flex-1 px-3 py-2 rounded-lg border bg-muted text-lg font-mono text-center font-bold tracking-wider"
                                 />
                                 <Button
                                     size="icon"
@@ -380,6 +409,9 @@ const Dashboard = () => {
                                     {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                 </Button>
                             </div>
+                            <p className="text-xs text-muted-foreground text-center">
+                                Others can enter this code when staking to link as your referral
+                            </p>
                         </div>
                     </Card>
                 </div>
