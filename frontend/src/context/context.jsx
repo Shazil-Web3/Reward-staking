@@ -216,10 +216,22 @@ export const StakingProvider = ({ children }) => {
      */
     const claim = useCallback(async (epochId, amount, proof) => {
         try {
+            // Debug logging
+            console.log('🎁 Claiming reward with:', {
+                epochId,
+                amount,
+                proof,
+                proofLength: proof?.length || 0
+            });
+
+            // Ensure proof is an array (default to empty if null/undefined)
+            const proofArray = proof || [];
+
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'claim',
-                args: [BigInt(epochId), BigInt(amount), proof],
+                args: [BigInt(epochId), BigInt(amount), proofArray],
+                gas: 500000n, // Set reasonable gas limit to avoid network cap issues
             });
             return await handleTransaction(hash, "Claim Reward");
         } catch (error) {

@@ -24,13 +24,13 @@ const Home = () => {
           <div className="container relative z-10">
             <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
               <div className="space-y-6">
-                <h1 className="text-6xl md:text-8xl font-bold leading-tight">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-bold leading-tight px-2">
                   Welcome to <span className="gradient-text">CryptoCommunity</span>
                 </h1>
-                <p className="text-2xl md:text-3xl text-muted-foreground font-medium">
+                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-muted-foreground font-medium px-4">
                   The Smart Token Holding System
                 </p>
-                <p className="text-lg md:text-xl max-w-3xl mx-auto text-muted-foreground/80">
+                <p className="text-sm sm:text-base md:text-lg text-muted-foreground/80 max-w-3xl mx-auto px-4">
                   Lock your tokens, qualify through referrals, and earn from the reward pool. 
                   Join thousands of users building wealth through our transparent staking ecosystem.
                 </p>

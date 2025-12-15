@@ -205,21 +205,15 @@ const Dashboard = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Logic for Referral Target based on Max Package
-  const getMaxPackageId = () => {
-      if (!stakes.length) return 0;
-      return Math.max(...stakes.map(s => s.package_id));
+  // Logic for Referral Target based on Total Staked Amount
+  const getReferralTarget = (totalStaked) => {
+      if (totalStaked >= 1000) return 0;  // $1000+ = No referrals needed
+      if (totalStaked >= 100) return 5;   // $100-$1000 = 5 referrals
+      return 10;                           // $0-$100 = 10 referrals
   };
 
-  const getReferralTarget = (pkgId) => {
-      // 0: Starter (10), 1: Pro (5), 2: Elite (0), 3: Custom (10)
-      if (pkgId === 2) return 0;
-      if (pkgId === 1) return 5;
-      return 10;
-  };
-
-  const maxPackageId = getMaxPackageId();
-  const referralTarget = getReferralTarget(maxPackageId);
+  const totalStaked = userData?.total_staked || 0;
+  const referralTarget = getReferralTarget(totalStaked);
   const currentReferrals = userData?.direct_referrals_count || 0;
   const isReferralEligible = currentReferrals >= referralTarget;
 

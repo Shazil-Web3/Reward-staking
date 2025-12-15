@@ -31,6 +31,19 @@ const UserTable = () => {
         }
     };
 
+    // Helper: Calculate referral requirement based on total staked
+    const getReferralRequirement = (totalStaked) => {
+        if (totalStaked >= 1000) return 0;
+        if (totalStaked >= 100) return 5;
+        return 10;
+    };
+
+    // Helper: Check if user is eligible
+    const isEligible = (user) => {
+        const required = getReferralRequirement(user.total_staked || 0);
+        return (user.direct_referrals_count || 0) >= required;
+    };
+
     const filteredUsers = users.filter(user =>
         user.wallet_address?.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -61,17 +74,19 @@ const UserTable = () => {
                             <TableHead>Referral Code</TableHead>
                             <TableHead>Total Staked</TableHead>
                             <TableHead>Direct Referrals</TableHead>
+                            <TableHead>Required</TableHead>
+                            <TableHead>Status</TableHead>
                             <TableHead>Joined</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center py-8">Loading users...</TableCell>
+                                <TableCell colSpan={7} className="text-center py-8">Loading users...</TableCell>
                             </TableRow>
                         ) : filteredUsers.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-center py-8">No users found.</TableCell>
+                                <TableCell colSpan={7} className="text-center py-8">No users found.</TableCell>
                             </TableRow>
                         ) : (
                             filteredUsers.map((user, i) => (
@@ -89,6 +104,20 @@ const UserTable = () => {
                                     </TableCell>
                                     <TableCell>
                                         {user.direct_referrals_count}
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {getReferralRequirement(user.total_staked || 0)}
+                                    </TableCell>
+                                    <TableCell>
+                                        {isEligible(user) ? (
+                                            <Badge className="bg-green-500 text-white">
+                                                ✓ Eligible
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="secondary">
+                                                Not Eligible
+                                            </Badge>
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-muted-foreground text-xs">
                                         {new Date(user.created_at).toLocaleDateString()}

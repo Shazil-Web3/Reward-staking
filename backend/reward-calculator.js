@@ -41,16 +41,23 @@ async function calculateRewardDistribution(rewardPoolTokens) {
             .eq('status', 'active');
 
         if (error) throw error;
+        if (!stakes || stakes.length === 0) {
+            console.log("⚠️  No active stakes found");
+            throw new Error("No eligible recipients");
+        }
 
-        // 2. Filter eligible stakers
+        // Helper function: Calculate referral requirement based on total staked
+        const getReferralRequirement = (totalStaked) => {
+            if (totalStaked >= 1000) return 0;  // $1000+ = No referrals needed
+            if (totalStaked >= 100) return 5;   // $100-$1000 = 5 referrals
+            return 10;                           // $0-$100 = 10 referrals
+        };
+
+        // 2. Filter eligible stakers based on total staked amount
         const eligible = stakes.filter(stake => {
             const user = stake.users;
-            const pkg = PACKAGE_REQUIREMENTS[stake.package_id];
-            
-            // Check if user meets referral requirements
-            const meetsReferrals = user.direct_referrals_count >= pkg.requiredReferrals;
-            
-            return meetsReferrals;
+            const requiredReferrals = getReferralRequirement(user.total_staked);
+            return user.direct_referrals_count >= requiredReferrals;
         });
 
         if (eligible.length === 0) {

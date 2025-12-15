@@ -37,18 +37,18 @@ app.get('/api/rewards/eligible', async (req, res) => {
 
         if (error) throw error;
 
-        // Filter eligible based on referral requirements
-        const PACKAGE_REQUIREMENTS = {
-            0: { requiredReferrals: 10 },
-            1: { requiredReferrals: 5 },
-            2: { requiredReferrals: 0 },
-            3: { requiredReferrals: 10 }
+        // Helper function: Calculate referral requirement based on total staked
+        const getReferralRequirement = (totalStaked) => {
+            if (totalStaked >= 1000) return 0;  // $1000+ = No referrals needed
+            if (totalStaked >= 100) return 5;   // $100-$1000 = 5 referrals
+            return 10;                           // $0-$100 = 10 referrals
         };
 
+        // Filter eligible based on total staked amount
         const eligible = stakes.filter(stake => {
             const user = stake.users;
-            const pkg = PACKAGE_REQUIREMENTS[stake.package_id];
-            return user.direct_referrals_count >= pkg.requiredReferrals;
+            const requiredReferrals = getReferralRequirement(user.total_staked);
+            return user.direct_referrals_count >= requiredReferrals;
         });
 
         res.json({
@@ -56,7 +56,9 @@ app.get('/api/rewards/eligible', async (req, res) => {
             eligible: eligible.map(s => ({
                 address: s.users.wallet_address,
                 stake: s.amount,
+                totalStaked: s.users.total_staked,
                 referrals: s.users.direct_referrals_count,
+                requiredReferrals: getReferralRequirement(s.users.total_staked),
                 package: s.package_id
             }))
         });
@@ -156,6 +158,8 @@ app.post('/api/wallet/register', async (req, res) => {
 app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
     try {
         const { address, epochId } = req.params;
+        
+        console.log(`🔍 Fetching proof for address: ${address}, epoch: ${epochId}`);
 
         let query = supabase
             .from('epoch_data')
@@ -170,15 +174,24 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
         const { data: epochs, error } = await query;
         const epoch = epochs && epochs.length > 0 ? epochs[0] : null;
 
+        console.log(`📊 Found epoch:`, epoch ? `ID ${epoch.id}` : 'None');
+
         if (error || !epoch) {
+            console.log('❌ Epoch not found');
             return res.status(404).json({ error: 'Epoch not found' });
         }
 
-        const proofs = JSON.parse(epoch.proofs);
-        const recipients = JSON.parse(epoch.recipients);
+        // Parse JSON data
+        const proofs = typeof epoch.proofs === 'string' ? JSON.parse(epoch.proofs) : epoch.proofs;
+        const recipients = typeof epoch.recipients === 'string' ? JSON.parse(epoch.recipients) : epoch.recipients;
+
+        console.log(`📦 Proofs keys:`, Object.keys(proofs).slice(0, 5));
+        console.log(`👥 Recipients:`, recipients.map(r => r.address).slice(0, 5));
 
         const userProof = proofs[address.toLowerCase()];
         const userReward = recipients.find(r => r.address.toLowerCase() === address.toLowerCase());
+
+        console.log(`🎯 User proof found:`, !!userProof, `Reward found:`, !!userReward);
 
         if (!userProof || !userReward) {
             return res.status(404).json({ error: 'Address not eligible for this epoch' });
@@ -202,7 +215,7 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
         });
 
     } catch (error) {
-        console.error(error);
+        console.error('❌ Proof endpoint error:', error);
         res.status(500).json({ error: error.message });
     }
 });
