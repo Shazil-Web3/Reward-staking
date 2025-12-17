@@ -197,21 +197,47 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
             return res.status(404).json({ error: 'Address not eligible for this epoch' });
         }
 
-        // Check if already claimed
-        const { data: claim } = await supabase
-            .from('reward_claims')
-            .select('id')
-            .eq('user_address', address.toLowerCase())
-            .eq('epoch_id', epoch.id)
-            .single();
+        // Check if already claimed - PRIMARY SOURCE: CONTRACT
+        const checkEpochId = epoch.blockchain_epoch_id || epoch.id;
+        console.log(`🔍 Checking claim status from contract: epoch_id=${checkEpochId}, user=${address.toLowerCase()}`);
+        
+        let hasClaimed = false;
+        try {
+            // Read directly from contract (source of truth)
+            const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+            const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';
+            const provider = new ethers.JsonRpcProvider(RPC_URL);
+            
+            const contractABI = [
+                "function claimed(uint256 epochId, address user) view returns (bool)"
+            ];
+            const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, provider);
+            
+            hasClaimed = await contract.claimed(checkEpochId, address.toLowerCase());
+            console.log(`✅ Contract claim status: ${hasClaimed}`);
+            
+        } catch (contractErr) {
+            console.warn('⚠️ Contract read failed, falling back to database:', contractErr.message);
+            
+            // Fallback to database check
+            const { data: claim } = await supabase
+                .from('reward_claims')
+                .select('*')
+                .eq('user_address', address.toLowerCase())
+                .eq('epoch_id', checkEpochId)
+                .maybeSingle();
+                
+            hasClaimed = !!claim;
+            console.log(`📋 Database claim status (fallback): ${hasClaimed}`);
+        }
 
         res.json({
-            epochId: epoch.blockchain_epoch_id || epoch.id, // Use blockchain ID if available
+            epochId: epoch.blockchain_epoch_id || epoch.id,
             address: address,
             amount: userReward.amount,
             proof: userProof,
             merkleRoot: epoch.merkle_root,
-            claimed: !!claim
+            claimed: hasClaimed
         });
 
     } catch (error) {
@@ -412,13 +438,39 @@ app.get('/api/vip/proof/:address/:epochId', async (req, res) => {
             return res.status(404).json({ error: 'Address not eligible for this VIP epoch' });
         }
 
-        // Check if already claimed
-        const { data: claim } = await supabase
-            .from('vip_reward_claims')
-            .select('id')
-            .eq('user_address', address.toLowerCase())
-            .eq('epoch_id', epoch.id)
-            .single();
+        // Check if already claimed - PRIMARY SOURCE: CONTRACT
+        const checkEpochId = epoch.blockchain_epoch_id || epoch.id;
+        console.log(`🔍 Checking VIP claim status from contract: epoch_id=${checkEpochId}, user=${address.toLowerCase()}`);
+        
+        let hasClaimed = false;
+        try {
+            // Read directly from contract (source of truth)
+            const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+            const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';
+            const provider = new ethers.JsonRpcProvider(RPC_URL);
+            
+            const contractABI = [
+                "function vipClaimed(uint256 epochId, address user) view returns (bool)"
+            ];
+            const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, provider);
+            
+            hasClaimed = await contract.vipClaimed(checkEpochId, address.toLowerCase());
+            console.log(`✅ Contract VIP claim status: ${hasClaimed}`);
+            
+        } catch (contractErr) {
+            console.warn('⚠️ VIP contract read failed, falling back to database:', contractErr.message);
+            
+            // Fallback to database check
+            const { data: claim } = await supabase
+                .from('vip_reward_claims')
+                .select('*')
+                .eq('user_address', address.toLowerCase())
+                .eq('epoch_id', checkEpochId)
+                .maybeSingle();
+                
+            hasClaimed = !!claim;
+            console.log(`📋 VIP database claim status (fallback): ${hasClaimed}`);
+        }
 
         res.json({
             epochId: epoch.blockchain_epoch_id || epoch.id,
@@ -426,7 +478,7 @@ app.get('/api/vip/proof/:address/:epochId', async (req, res) => {
             amount: userReward.amount,
             proof: userProof,
             merkleRoot: epoch.merkle_root,
-            claimed: !!claim,
+            claimed: hasClaimed,
             totalReferrals: userReward.totalReferrals,
             directReferrals: userReward.directReferrals,
             indirectReferrals: userReward.indirectReferrals

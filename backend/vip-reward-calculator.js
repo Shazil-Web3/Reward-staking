@@ -50,6 +50,12 @@ async function calculateVIPRewardDistribution(rewardPoolTokens) {
         // 2. Group stakes by user (one user may have multiple stakes)
         const userStakes = new Map();
         stakes.forEach(stake => {
+            // Skip stakes without user data (failed join)
+            if (!stake.users) {
+                console.warn(`⚠️  Skipping stake ${stake.id}: no user data found`);
+                return;
+            }
+            
             const address = stake.users.wallet_address;
             if (!userStakes.has(address)) {
                 userStakes.set(address, {

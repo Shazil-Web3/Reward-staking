@@ -38,7 +38,7 @@ const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://local
 const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
-  const { withdraw, claim, refetchLocks } = useStaking();
+  const { withdraw, claim, claimVip, refetchLocks } = useStaking();
   const referralInputRef = useRef(null);
   
   const [userData, setUserData] = useState(null);
@@ -84,8 +84,25 @@ const Dashboard = () => {
         )
         .subscribe();
 
+      // Listen for reward claim events from context
+      const handleRewardClaimed = () => {
+        console.log('✅ Reward claimed event received, refreshing status...');
+        checkRewardStatus();
+        checkVipRewardStatus();
+      };
+      
+      const handleVipRewardClaimed = () => {
+        console.log('✅ VIP reward claimed event received, refreshing status...');
+        checkVipRewardStatus();
+      };
+      
+      window.addEventListener('reward-claimed', handleRewardClaimed);
+      window.addEventListener('vip-reward-claimed', handleVipRewardClaimed);
+
       return () => {
         supabase.removeChannel(channel);
+        window.removeEventListener('reward-claimed', handleRewardClaimed);
+        window.removeEventListener('vip-reward-claimed', handleVipRewardClaimed);
       };
     } else {
         setUserData(null);
@@ -177,15 +194,68 @@ const Dashboard = () => {
       }
   };
 
+  // Helper function to fetch reward status and return the data
+  const fetchRewardStatusData = async () => {
+      try {
+          const url = `${BACKEND_API_URL}/api/rewards/proof/${address}/latest`;
+          const res = await fetch(url);
+          
+          if (res.ok) {
+              const data = await res.json();
+              return {
+                  eligible: true,
+                  amount: data.amount,
+                  proof: data.proof,
+                  epochId: data.epochId,
+                  claimed: data.claimed
+              };
+          }
+          return null;
+      } catch (e) {
+          console.error("Error fetching reward status:", e);
+          return null;
+      }
+  };
+
   const handleClaimReward = async () => {
       if (!rewardStatus.eligible) return;
       try {
           setClaiming(true);
+          console.log('🎁 Claiming reward for epoch:', rewardStatus.epochId);
+          
           await claim(rewardStatus.epochId, rewardStatus.amount, rewardStatus.proof);
-          // Refresh after claim
-          checkRewardStatus(); 
+          
+          console.log('✅ Claim transaction succeeded, waiting for indexer...');
+          
+          // Wait for indexer to process the claim event (usually takes 2-5 seconds)
+          // Poll the API until it shows claimed status
+          let attempts = 0;
+          const maxAttempts = 10;
+          const pollInterval = 2000; // 2 seconds
+          
+          while (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+              console.log(`🔄 Checking claim status (attempt ${attempts + 1}/${maxAttempts})...`);
+              
+              const status = await fetchRewardStatusData(); // Use the helper to get fresh data
+              
+              if (status?.claimed) {
+                  console.log('✅ Claim confirmed in database!');
+                  setRewardStatus(status); // Update state with confirmed status
+                  break;
+              }
+              
+              attempts++;
+          }
+          
+          if (attempts >= maxAttempts) {
+              console.warn('⚠️ Claim may still be processing. Refresh page to see updated status.');
+              alert('Claim transaction sent! It may take a minute for the status to update. Please refresh the page.');
+          }
+          
       } catch (e) {
           console.error("Claim failed", e);
+          alert('Claim failed: ' + e.message);
       } finally {
           setClaiming(false);
       }
@@ -228,9 +298,11 @@ const Dashboard = () => {
       if (!vipRewardStatus.eligible) return;
       try {
           setClaimingVip(true);
-          alert("VIP claiming will be available after contract is updated with VIP functions. See VIP_CONTRACT_CHANGES.md");
+          await claimVip(vipRewardStatus.epochId, vipRewardStatus.amount, vipRewardStatus.proof);
+          // Refresh happens automatically via event listener
       } catch (e) {
           console.error("VIP claim failed", e);
+          alert("VIP claim failed: " + e.message);
       } finally {
           setClaimingVip(false);
       }

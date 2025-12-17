@@ -209,6 +209,28 @@ export const StakingProvider = ({ children }) => {
     }, [writeContract, contractConfig, publicClient]);
 
     /**
+     * Check if user has claimed a specific epoch (reads from contract)
+     * @param {number} epochId - Epoch ID
+     * @param {string} userAddress - User address to check
+     * @returns {Promise<boolean>} - True if claimed, false otherwise
+     */
+    const checkClaimStatus = useCallback(async (epochId, userAddress) => {
+        if (!publicClient || !userAddress) return false;
+
+        try {
+            const hasClaimed = await publicClient.readContract({
+                ...contractConfig,
+                functionName: 'claimed',
+                args: [BigInt(epochId), userAddress],
+            });
+            return hasClaimed;
+        } catch (error) {
+            console.error('Error checking claim status from contract:', error);
+            return false;
+        }
+    }, [publicClient, contractConfig]);
+
+    /**
      * Claim Rewards for a specific epoch
      * @param {number} epochId - Epoch ID
      * @param {string} amount - Amount to claim
@@ -216,7 +238,6 @@ export const StakingProvider = ({ children }) => {
      */
     const claim = useCallback(async (epochId, amount, proof) => {
         try {
-            // Debug logging
             console.log('🎁 Claiming reward with:', {
                 epochId,
                 amount,
@@ -224,21 +245,103 @@ export const StakingProvider = ({ children }) => {
                 proofLength: proof?.length || 0
             });
 
-            // Ensure proof is an array (default to empty if null/undefined)
             const proofArray = proof || [];
 
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'claim',
                 args: [BigInt(epochId), BigInt(amount), proofArray],
-                gas: 500000n, // Set reasonable gas limit to avoid network cap issues
+                gas: 500000n,
             });
-            return await handleTransaction(hash, "Claim Reward");
+
+            const receipt = await handleTransaction(hash, "Claim Reward");
+
+            // Dispatch custom event for immediate UI refresh
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('reward-claimed', {
+                    detail: { epochId, amount }
+                }));
+            }
+
+            return receipt;
         } catch (error) {
             console.error("Claim error:", error);
             throw error;
         }
-    }, [writeContract, contractConfig, publicClient]);
+    }, [writeContract, contractConfig, publicClient, handleTransaction]);
+
+    /**
+     * Claim VIP Rewards for a specific epoch
+     * @param {number} epochId - Epoch ID
+     * @param {string} amount - Amount to claim
+     * @param {string[]} proof - Merkle Proof
+     */
+    const claimVip = useCallback(async (epochId, amount, proof) => {
+        try {
+            console.log('👑 Claiming VIP reward with:', {
+                epochId,
+                amount,
+                proof,
+                proofLength: proof?.length || 0
+            });
+
+            const proofArray = proof || [];
+
+            const hash = await writeContract({
+                ...contractConfig,
+                functionName: 'claimVip',
+                args: [BigInt(epochId), BigInt(amount), proofArray],
+                gas: 500000n,
+            });
+
+            const receipt = await handleTransaction(hash, "Claim VIP Reward");
+
+            // Dispatch custom event for immediate UI refresh
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('vip-reward-claimed', {
+                    detail: { epochId, amount }
+                }));
+            }
+
+            return receipt;
+        } catch (error) {
+            console.error("VIP claim error:", error);
+            throw error;
+        }
+    }, [writeContract, contractConfig, publicClient, handleTransaction]);
+
+    /**
+     * Fund VIP Reward Pool
+     * @param {string} tokenAddress - Token address to fund with
+     * @param {string} amount - Amount in token units (wei)
+     */
+    const fundVipRewardTokens = useCallback(async (tokenAddress, amount) => {
+        try {
+            console.log('💎 Funding VIP Pool:', { tokenAddress, amount });
+
+            // IMPORTANT: Need to approve token first
+            console.log('Approving token...');
+            const approvalHash = await writeContract({
+                address: tokenAddress,
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [STAKING_CONTRACT_ADDRESS, BigInt(amount)],
+            });
+            await handleTransaction(approvalHash, "Token Approval");
+
+            // Then fund VIP pool
+            const hash = await writeContract({
+                ...contractConfig,
+                functionName: 'fundVipRewardTokens',
+                args: [tokenAddress, BigInt(amount)],
+            });
+
+            return await handleTransaction(hash, "Fund VIP Pool");
+        } catch (error) {
+            console.error("VIP funding error:", error);
+            throw error;
+        }
+    }, [writeContract, contractConfig, publicClient, handleTransaction]);
 
     const value = {
         // Data
@@ -253,6 +356,9 @@ export const StakingProvider = ({ children }) => {
         stake,
         withdraw,
         claim,
+        claimVip,
+        checkClaimStatus,
+        fundVipRewardTokens,
         refetchLocks,
     };
 

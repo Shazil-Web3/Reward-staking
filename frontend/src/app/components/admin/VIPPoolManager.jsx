@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { parseEther, formatUnits } from 'viem';
 import StakingArtifact from '@/context/staking.json';
+import { useStaking } from '@/context/context';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
 const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
@@ -17,6 +18,7 @@ const VIPPoolManager = () => {
     const { address } = useAccount();
     const { writeContractAsync } = useWriteContract();
     const publicClient = usePublicClient();
+    const { fundVipRewardTokens } = useStaking(); // Import from context
 
     // UI States
     const [fundAmount, setFundAmount] = useState('');
@@ -93,19 +95,48 @@ const VIPPoolManager = () => {
                 throw new Error(result.error || 'VIP epoch generation failed');
             }
 
-            setStatus(`VIP Merkle Root generated. Contract update required...`);
+            setStatus(`VIP Merkle Root generated. Submitting to blockchain...`);
 
-            // Show message that contract needs to be updated
-            alert(`VIP Epoch generated successfully!\n\n` +
-                `Recipients: ${result.recipients}\n` +
-                `Merkle Root: ${result.merkleRoot}\n\n` +
-                `⚠️ CONTRACT UPDATE REQUIRED\n` +
-                `Please deploy the updated contract with VIP functions.\n` +
-                `See VIP_CONTRACT_CHANGES.md for details.`);
+            console.log('📤 Submitting VIP epoch to blockchain:', {
+                merkleRoot: result.merkleRoot,
+                rewardToken: rewardTokenAddress,
+                amount: amountInWei
+            });
 
-            setStatus('VIP Epoch created in database. Awaiting contract deployment.');
+            // Read current VIP epoch count
+            const currentVipEpochCount = await publicClient.readContract({
+                address: STAKING_CONTRACT_ADDRESS,
+                abi: StakingArtifact.abi,
+                functionName: 'vipEpochsCount'
+            });
+
+            const blockchainEpochId = Number(currentVipEpochCount);
+
+            // Create VIP epoch on-chain
+            const txHash = await writeContractAsync({
+                address: STAKING_CONTRACT_ADDRESS,
+                abi: StakingArtifact.abi,
+                functionName: 'createVipRewardEpoch',
+                args: [result.merkleRoot, rewardTokenAddress, amountInWei]
+            });
+
+            setStatus(`VIP distribution submitted! Hash: ${txHash.slice(0, 10)}...`);
+            await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+            // Update database with blockchain epoch ID
+            await fetch(`${BACKEND_API_URL}/api/admin/update-vip-epoch-id`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    databaseEpochId: result.epochId,
+                    blockchainEpochId: blockchainEpochId
+                })
+            });
+
+            setStatus('VIP Rewards distributed successfully! Users can now claim.');
             setDistributeAmount('');
             refreshData();
+            setTimeout(() => setStatus(''), 5000);
 
         } catch (err) {
             console.error('VIP distribution error:', err);
@@ -121,9 +152,37 @@ const VIPPoolManager = () => {
             setError('Enter a valid amount to fund');
             return;
         }
+        if (!rewardTokenAddress) {
+            setError('Token address not loaded. Please refresh.');
+            return;
+        }
 
-        alert('VIP pool funding will be available after contract is updated with fundVipRewardTokens() function.\nSee VIP_CONTRACT_CHANGES.md');
-        setFundAmount('');
+        try {
+            setIsFunding(true);
+            setError('');
+            setStatus('Funding VIP Pool...');
+
+            const amountInWei = parseEther(fundAmount).toString();
+
+            // Call the context function
+            await fundVipRewardTokens(rewardTokenAddress, amountInWei);
+
+            setStatus('VIP Pool funded successfully! ✅');
+            setFundAmount('');
+
+            // Refresh stats
+            setTimeout(() => {
+                refreshData();
+                setStatus('');
+            }, 2000);
+
+        } catch (err) {
+            console.error('VIP funding error:', err);
+            setError(err.message || 'Failed to fund VIP pool');
+            setStatus('');
+        } finally {
+            setIsFunding(false);
+        }
     };
 
     return (

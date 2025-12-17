@@ -14,7 +14,9 @@ const ABI = [
     "event ReferrerSet(address indexed user, address indexed referrer)",
     "event Withdrawn(address indexed user, uint256 indexed lockId, uint256 tokenAmount)",
     "event RewardTokensFunded(address indexed token, uint256 amount)",
-    "event Claimed(uint256 indexed epochId, address indexed user, uint256 amount)",
+    "event VIPRewardTokensFunded(address indexed token, uint256 amount)",
+    "event RewardClaimed(uint256 indexed epochId, address indexed user, uint256 amount)",
+    "event VipRewardClaimed(uint256 indexed epochId, address indexed user, uint256 amount)",
     "function getLocks(address user) external view returns (tuple(uint256 amountToken, uint64 start, uint64 end, uint8 packageId, bool withdrawn)[])"
 ];
 
@@ -163,27 +165,170 @@ const handleWithdrawn = async (user, lockId, amount) => {
 const handleClaimed = async (epochId, user, amount, event) => {
     console.log(`🎁 Claimed: ${user} - Epoch: ${epochId} - Amount: ${ethers.formatEther(amount)}`);
     try {
-        await supabase.from('reward_claims').insert({
+        const txHash = event?.log?.transactionHash || event?.transactionHash;
+        
+        const claimData = {
             user_address: user.toLowerCase(),
             epoch_id: Number(epochId),
             amount: parseFloat(ethers.formatEther(amount)),
-            tx_hash: event.log.transactionHash
-        });
+            tx_hash: txHash
+        };
+        
+        console.log('📝 Writing claim to database:', JSON.stringify(claimData));
+        
+        const { error } = await supabase.from('reward_claims').insert(claimData);
+        
+        if (error) {
+            console.error('❌ Database error inserting claim:', error);
+        } else {
+            console.log('✅ Claim successfully written to database');
+        }
     } catch (err) {
         console.error("Error handling Claimed:", err);
     }
 };
 
-// --- LISTENERS ---
+const handleVipClaimed = async (epochId, user, amount, event) => {
+    console.log(`👑 VIP Claimed: ${user} - Epoch: ${epochId} - Amount: ${ethers.formatEther(amount)}`);
+    try {
+        const txHash = event?.log?.transactionHash || event?.transactionHash;
+        
+        const claimData = {
+            user_address: user.toLowerCase(),
+            epoch_id: Number(epochId),
+            amount: parseFloat(ethers.formatEther(amount)),
+            tx_hash: txHash
+        };
+        
+        console.log('📝 Writing VIP claim to database:', JSON.stringify(claimData));
+        
+        const { error } = await supabase.from('vip_reward_claims').insert(claimData);
+        
+        if (error) {
+            console.error('❌ Database error inserting VIP claim:', error);
+        } else {
+            console.log('✅ VIP claim successfully written to database');
+        }
+    } catch (err) {
+        console.error("Error handling VIP Claimed:", err);
+    }
+};
 
-const startListening = () => {
-    contract.on('Locked', handleLocked);
-    contract.on('ReferrerSet', handleReferrerSet);
-    contract.on('Withdrawn', handleWithdrawn);
-    contract.on('Claimed', handleClaimed);
+const handleVIPRewardTokensFunded = async (token, amount, event) => {
+    console.log(`💎 VIP Pool Funded: ${ethers.formatEther(amount)} tokens from ${token}`);
+    try {
+        const txHash = event?.log?.transactionHash || event?.transactionHash;
+        console.log(`📝 VIP funding TX: ${txHash}`);
+        // Optional: Store in database for tracking
+    } catch (err) {
+        console.error("Error handling VIP Reward Tokens Funded:", err);
+    }
+};
+
+// --- POLLING-BASED INDEXER ---
+
+let lastProcessedBlock = null;
+
+// Load last processed block from a file or start from a recent block
+const getStartingBlock = async () => {
+    try {
+        const currentBlock = await provider.getBlockNumber();
+        // Start from 1000 blocks ago to catch recent events
+        return currentBlock -1000;
+    } catch (e) {
+        console.error('Error getting starting block:', e);
+        return 0;
+    }
+};
+
+const processEvent = async (event, eventName) => {
+    try {
+        const parsedLog = contract.interface.parseLog(event);
+        
+        if (eventName === 'Locked') {
+            const { user, lockId, packageId, tokenAmount, end } = parsedLog.args;
+            await handleLocked(user, lockId, packageId, tokenAmount, end, { log: event });
+        } else if (eventName === 'ReferrerSet') {
+            const { user, referrer } = parsedLog.args;
+            await handleReferrerSet(user, referrer);
+        } else if (eventName === 'Withdrawn') {
+            const { user, lockId, tokenAmount } = parsedLog.args;
+            await handleWithdrawn(user, lockId, tokenAmount);
+        } else if (eventName === 'RewardClaimed') {
+            const { epochId, user, amount } = parsedLog.args;
+            await handleClaimed(epochId, user, amount, { log: event });
+        } else if (eventName === 'VipRewardClaimed') {
+            const { epochId, user, amount } = parsedLog.args;
+            await handleVipClaimed(epochId, user, amount, { log: event });
+        } else if (eventName === 'VIPRewardTokensFunded') {
+            const { token, amount } = parsedLog.args;
+            await handleVIPRewardTokensFunded(token, amount, { log: event });
+        }
+    } catch (e) {
+        console.error(`Error processing ${eventName} event:`, e);
+    }
+};
+
+const pollEvents = async () => {
+    try {
+        const currentBlock = await provider.getBlockNumber();
+        
+        if (!lastProcessedBlock) {
+            lastProcessedBlock = await getStartingBlock();
+            console.log(`📍 Starting indexer from block ${lastProcessedBlock}`);
+        }
+        
+        // Don't query too many blocks at once (max 10000 to avoid rate limits)
+        const toBlock = Math.min(lastProcessedBlock + 10000, currentBlock);
+        
+        if (toBlock > lastProcessedBlock) {
+            console.log(`🔍 Scanning blocks ${lastProcessedBlock} to ${toBlock}...`);
+            
+            // Query all events in parallel
+            const [locked, referrerSet, withdrawn, rewardClaimed, vipRewardClaimed, vipFunded] = await Promise.all([
+                contract.queryFilter(contract.filters.Locked(), lastProcessedBlock, toBlock),
+                contract.queryFilter(contract.filters.ReferrerSet(), lastProcessedBlock, toBlock),
+                contract.queryFilter(contract.filters.Withdrawn(), lastProcessedBlock, toBlock),
+                contract.queryFilter(contract.filters.RewardClaimed(), lastProcessedBlock, toBlock),
+                contract.queryFilter(contract.filters.VipRewardClaimed(), lastProcessedBlock, toBlock),
+                contract.queryFilter(contract.filters.VIPRewardTokensFunded(), lastProcessedBlock, toBlock)
+            ]);
+            
+            // Process all events in order by block number
+            const allEvents = [
+                ...locked.map(e => ({ event: e, name: 'Locked' })),
+                ...referrerSet.map(e => ({ event: e, name: 'ReferrerSet' })),
+                ...withdrawn.map(e => ({ event: e, name: 'Withdrawn' })),
+                ...rewardClaimed.map(e => ({ event: e, name: 'RewardClaimed' })),
+                ...vipRewardClaimed.map(e => ({ event: e, name: 'VipRewardClaimed' })),
+                ...vipFunded.map(e => ({ event: e, name: 'VIPRewardTokensFunded' }))
+            ].sort((a, b) => a.event.blockNumber - b.event.blockNumber);
+            
+            if (allEvents.length > 0) {
+                console.log(`📦 Found ${allEvents.length} events to process`);
+                
+                for (const { event, name } of allEvents) {
+                    await processEvent(event, name);
+                }
+            }
+            
+            lastProcessedBlock = toBlock + 1;
+        }
+        
+    } catch (e) {
+        console.error('❌ Error polling events:', e.message);
+    }
+};
+
+const startListening = async () => {
+    console.log('🔄 Starting polling-based indexer...');
     
-    // contract.on('RewardTokensFunded', ...) - Add logic to update reward_pool table
-
+    // Initial scan
+    await pollEvents();
+    
+    // Poll every 5 seconds
+    setInterval(pollEvents, 5000);
+    
     // Keep process alive if running standalone
     if (require.main === module) {
         process.stdin.resume();

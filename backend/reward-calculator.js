@@ -65,19 +65,36 @@ async function calculateRewardDistribution(rewardPoolTokens) {
             return [];
         }
 
-        // 3. Calculate total stake of eligible users
-        const totalEligibleStake = eligible.reduce((sum, s) => sum + parseFloat(s.amount), 0);
+        // 3. Group stakes by user address (sum all stakes per user)
+        const userStakes = {};
+        eligible.forEach(stake => {
+            const address = stake.users.wallet_address;
+            if (!userStakes[address]) {
+                userStakes[address] = {
+                    address: address,
+                    totalStake: 0,
+                    directReferrals: stake.users.direct_referrals_count,
+                    totalStaked: stake.users.total_staked
+                };
+            }
+            userStakes[address].totalStake += parseFloat(stake.amount);
+        });
 
-        // 4. Distribute rewards proportionally
-        const recipients = eligible.map(stake => {
-            const userStake = parseFloat(stake.amount);
-            const share = userStake / totalEligibleStake;
+        const uniqueUsers = Object.values(userStakes);
+        console.log(`👥 Unique eligible users: ${uniqueUsers.length}`);
+
+        // 4. Calculate total stake of all unique eligible users
+        const totalEligibleStake = uniqueUsers.reduce((sum, user) => sum + user.totalStake, 0);
+
+        // 5. Distribute rewards proportionally (one entry per user)
+        const recipients = uniqueUsers.map(user => {
+            const share = user.totalStake / totalEligibleStake;
             const reward = BigInt(Math.floor(share * Number(rewardPoolTokens)));
 
             return {
-                address: stake.users.wallet_address,
+                address: user.address,
                 amount: reward.toString(),
-                stake: userStake,
+                stake: user.totalStake,
                 share: (share * 100).toFixed(2) + '%'
             };
         });
