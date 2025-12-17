@@ -206,7 +206,7 @@ app.get('/api/rewards/proof/:address/:epochId', async (req, res) => {
             .single();
 
         res.json({
-            epochId: epoch.id,
+            epochId: epoch.blockchain_epoch_id || epoch.id, // Use blockchain ID if available
             address: address,
             amount: userReward.amount,
             proof: userProof,
@@ -245,6 +245,27 @@ app.post('/api/admin/generate-epoch', async (req, res) => {
 
     } catch (error) {
         console.error(error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update epoch with blockchain ID
+app.post('/api/admin/update-epoch-id', async (req, res) => {
+    try {
+        const { databaseEpochId, blockchainEpochId } = req.body;
+        
+        console.log(`🔄 Updating epoch ${databaseEpochId} with blockchain ID ${blockchainEpochId}`);
+        
+        const { error } = await supabase
+            .from('epoch_data')
+            .update({ blockchain_epoch_id: blockchainEpochId })
+            .eq('id', databaseEpochId);
+            
+        if (error) throw error;
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating epoch ID:', error);
         res.status(500).json({ error: error.message });
     }
 });

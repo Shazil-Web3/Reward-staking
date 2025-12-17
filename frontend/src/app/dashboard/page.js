@@ -133,10 +133,24 @@ const Dashboard = () => {
   const checkRewardStatus = async () => {
       try {
           setCheckingReward(true);
+          console.log('🔍 Checking reward status for:', address);
+          
           // Fetch latest epoch proof
-          const res = await fetch(`${BACKEND_API_URL}/api/rewards/proof/${address}/latest`);
+          const url = `${BACKEND_API_URL}/api/rewards/proof/${address}/latest`;
+          console.log('📡 Fetching from:', url);
+          
+          const res = await fetch(url);
+          console.log('📊 Response status:', res.status);
+          
           if (res.ok) {
               const data = await res.json();
+              console.log('✅ Received proof data:', {
+                  epochId: data.epochId,
+                  amount: data.amount,
+                  proofLength: data.proof?.length || 0,
+                  claimed: data.claimed
+              });
+              
               setRewardStatus({
                   eligible: true,
                   amount: data.amount, // in wei
@@ -145,6 +159,8 @@ const Dashboard = () => {
                   claimed: data.claimed // New field from API
               });
           } else {
+              const errorText = await res.text();
+              console.log('❌ API Error:', res.status, errorText);
               setRewardStatus({ eligible: false, amount: 0, proof: null, epochId: null });
           }
       } catch (e) {

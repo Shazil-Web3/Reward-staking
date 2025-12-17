@@ -125,6 +125,22 @@ const PoolManager = () => {
 
             setStatus(`Merkle Root generated. Submitting to blockchain...`);
 
+            console.log('📤 Submitting to blockchain:', {
+                merkleRoot: result.merkleRoot,
+                rewardToken: rewardTokenAddress,
+                amount: amountInWei
+            });
+
+            // Read current epoch count from blockchain BEFORE creating new epoch
+            const currentEpochCount = await publicClient.readContract({
+                address: STAKING_CONTRACT_ADDRESS,
+                abi: StakingArtifact.abi,
+                functionName: 'epochsCount'
+            });
+
+            const blockchainEpochId = Number(currentEpochCount);
+            console.log('📊 Blockchain epoch count:', blockchainEpochId, '(next epoch will be:', blockchainEpochId, ')');
+
             // 2. Blockchain Submission
             const txHash = await writeContractAsync({
                 address: STAKING_CONTRACT_ADDRESS,
@@ -133,9 +149,21 @@ const PoolManager = () => {
                 args: [result.merkleRoot, rewardTokenAddress, amountInWei]
             });
 
+            console.log('✅ Transaction hash:', txHash);
             setStatus(`Distribution submitted! Hash: ${txHash.slice(0, 10)}...`);
             await publicClient.waitForTransactionReceipt({ hash: txHash });
 
+            // Update the database with the correct blockchain epoch ID
+            await fetch(`${BACKEND_API_URL}/api/admin/update-epoch-id`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    databaseEpochId: result.epochId,
+                    blockchainEpochId: blockchainEpochId
+                })
+            });
+
+            console.log('✅ Transaction confirmed! Blockchain epoch ID:', blockchainEpochId);
             setStatus('Rewards distributed successfully! Users can now claim.');
             setDistributeAmount('');
             refreshData();
