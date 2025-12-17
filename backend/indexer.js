@@ -123,8 +123,7 @@ const handleReferrerSet = async (user, referrer) => {
             .update({ referrer_address: referrer.toLowerCase() })
             .eq('wallet_address', user.toLowerCase());
 
-        // Increment referrer's count
-        // Simplified: Fetch -> Increment -> Save (Concurrency risk in high load, OK for MVP)
+        // Increment referrer's direct count
         const { data: refUser } = await supabase.from('users').select('direct_referrals_count').eq('wallet_address', referrer.toLowerCase()).single();
         if (refUser) {
              await supabase
@@ -132,6 +131,15 @@ const handleReferrerSet = async (user, referrer) => {
                 .update({ direct_referrals_count: refUser.direct_referrals_count + 1 })
                 .eq('wallet_address', referrer.toLowerCase());
         }
+
+        // Update indirect referrals for upline (2 levels max)
+        const { updateReferralCounts } = require('./referral-tree');
+        
+        // This will update indirect counts for:
+        // - The new user
+        // - The referrer (1 level up)
+        // - The referrer's referrer (2 levels up)
+        await updateReferralCounts(user.toLowerCase());
 
     } catch (err) {
         console.error("Error handling ReferrerSet:", err);

@@ -32,7 +32,7 @@ contract StakingLock is Ownable, Pausable, ReentrancyGuard {
     uint256 public usdtFeesAccrued;            // tracked USDT fees held by this contract
 
     // --- Lock period constants (1–5 years) ---
-    uint256 public constant ONE_YEAR       = 365 days;
+    uint256 public constant ONE_YEAR       = 60; // 1 minute for testing (CHANGE BACK TO 365 days FOR PROD)
     uint256 public constant MIN_LOCK       = ONE_YEAR;        // 1 year
     uint256 public constant MAX_LOCK       = ONE_YEAR * 5;    // 5 years
     uint8   public constant MAX_LOCK_YEARS = 5;
@@ -82,6 +82,12 @@ contract StakingLock is Ownable, Pausable, ReentrancyGuard {
     mapping(uint256 => Epoch) public epochs;                 // epochId => epoch
     mapping(uint256 => mapping(address => bool)) public claimed; // epochId => user => claimed?
 
+    // --- VIP Reward Pool ---
+    uint256 public vipPoolBalance;  // Track VIP pool separately
+    uint256 public vipEpochsCount;
+    mapping(uint256 => Epoch) public vipEpochs;                 // VIP epochs
+    mapping(uint256 => mapping(address => bool)) public vipClaimed; // VIP claims
+
     // --- Events ---
     event Locked(address indexed user, uint256 indexed lockId, uint8 packageId, uint256 tokenAmount, uint64 end);
     event Withdrawn(address indexed user, uint256 indexed lockId, uint256 tokenAmount);
@@ -97,6 +103,9 @@ contract StakingLock is Ownable, Pausable, ReentrancyGuard {
     event RewardClaimed(uint256 indexed epochId, address indexed user, uint256 amount);
     event RewardTokensFunded(address indexed token, uint256 amount);
     event Rescue(address indexed token, uint256 amount);
+    event VipPoolFunded(uint256 amount, string source); // source: "claim_fee" or "manual"
+    event VipRewardEpochCreated(uint256 indexed epochId, bytes32 merkleRoot, uint256 total);
+    event VipRewardClaimed(uint256 indexed epochId, address indexed user, uint256 amount);
 
     constructor(
         address _yourToken,
@@ -266,8 +275,61 @@ contract StakingLock is Ownable, Pausable, ReentrancyGuard {
         require(MerkleProof.verify(proof, e.root, leaf), "bad proof");
 
         claimed[epochId][msg.sender] = true;
+        
+        // Calculate 5% fee for VIP pool
+        uint256 vipFee = (amount * 500) / 10_000; // 5% = 500 basis points
+        uint256 userAmount = amount - vipFee;
+        
+        // Update VIP pool balance
+        vipPoolBalance += vipFee;
+        emit VipPoolFunded(vipFee, "claim_fee");
+        
+        // Transfer reduced amount to user
+        e.payoutToken.safeTransfer(msg.sender, userAmount);
+        emit RewardClaimed(epochId, msg.sender, userAmount);
+    }
+
+    /// @notice Admin can manually fund the VIP reward pool
+    function fundVipRewardTokens(address token, uint256 amount) external onlyOwner {
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        vipPoolBalance += amount;
+        emit VipPoolFunded(amount, "manual");
+    }
+
+    /// @notice Create a VIP reward epoch for 100+ referral users
+    function createVipRewardEpoch(bytes32 merkleRoot, address payoutToken, uint256 total) external onlyOwner {
+        require(merkleRoot != bytes32(0) && payoutToken != address(0) && total > 0, "bad epoch");
+        require(vipPoolBalance >= total, "insufficient VIP pool");
+        
+        vipEpochs[vipEpochsCount] = Epoch({
+            root: merkleRoot,
+            payoutToken: IERC20(payoutToken),
+            total: total,
+            active: true
+        });
+        
+        vipPoolBalance -= total; // Reserve for distribution
+        emit VipRewardEpochCreated(vipEpochsCount, merkleRoot, total);
+        vipEpochsCount++;
+    }
+
+    /// @notice Users claim their VIP rewards (separate from normal rewards)
+    function claimVip(uint256 epochId, uint256 amount, bytes32[] calldata proof) external nonReentrant {
+        Epoch memory e = vipEpochs[epochId];
+        require(e.active, "inactive");
+        require(!vipClaimed[epochId][msg.sender], "claimed");
+        
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
+        require(MerkleProof.verify(proof, e.root, leaf), "bad proof");
+        
+        vipClaimed[epochId][msg.sender] = true;
         e.payoutToken.safeTransfer(msg.sender, amount);
-        emit RewardClaimed(epochId, msg.sender, amount);
+        emit VipRewardClaimed(epochId, msg.sender, amount);
+    }
+
+    /// @notice Get current VIP pool balance
+    function getVipPoolBalance() external view returns (uint256) {
+        return vipPoolBalance;
     }
 
     // --- Views ---

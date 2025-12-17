@@ -1,7 +1,7 @@
 'use client';
 
 import { Card } from '@/app/components/ui/card';
-import { Coins, Users, Lock, TrendingUp } from 'lucide-react';
+import { Coins, Users, Lock, TrendingUp, Crown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -9,6 +9,7 @@ const DashboardStats = () => {
     const [stats, setStats] = useState([
         { title: "Total Staked", value: "Loading...", change: "...", icon: Lock },
         { title: "Reward Pool", value: "Loading...", change: "...", icon: Coins },
+        { title: "VIP Pool", value: "Loading...", change: "...", icon: Crown },
         { title: "Active Users", value: "Loading...", change: "...", icon: Users },
         { title: "Total Supply", value: "100T", change: "Max Supply", icon: TrendingUp },
     ]);
@@ -32,12 +33,20 @@ const DashboardStats = () => {
 
                 // Fetch Reward Pool (Live from Backend API)
                 let rewardBalance = 0;
+                let vipPoolBalance = 0;
                 try {
                     const poolRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/admin/pool-stats`);
                     if (poolRes.ok) {
                         const poolData = await poolRes.json();
                         // poolBalance is in wei, format it
                         rewardBalance = parseFloat(poolData.poolBalance) / 1e18; // Assuming 18 decimals
+                    }
+
+                    // Fetch VIP Pool
+                    const vipRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/admin/vip-pool-stats`);
+                    if (vipRes.ok) {
+                        const vipData = await vipRes.json();
+                        vipPoolBalance = parseFloat(vipData.vipPoolBalance) / 1e18;
                     }
                 } catch (e) {
                     console.error("Pool stats fetch error", e);
@@ -55,6 +64,12 @@ const DashboardStats = () => {
                         value: `${rewardBalance.toLocaleString()} TOKENS`,
                         change: "Ready to distribute",
                         icon: Coins,
+                    },
+                    {
+                        title: "VIP Pool",
+                        value: `${vipPoolBalance.toLocaleString()} TOKENS`,
+                        change: "100+ referrals",
+                        icon: Crown,
                     },
                     {
                         title: "Active Users",

@@ -338,6 +338,206 @@ app.get('/api/epochs', async (req, res) => {
     }
 });
 
+// --- VIP REWARD POOL ENDPOINTS ---
+
+const { generateVIPEpoch, VIP_REFERRAL_REQUIREMENT } = require('./vip-reward-calculator');
+
+/**
+ * GET /api/vip/eligible
+ * Returns list of VIP-eligible users (100+ total referrals)
+ */
+app.get('/api/vip/eligible', async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .gte('total_referrals_count', VIP_REFERRAL_REQUIREMENT)
+            .order('total_referrals_count', { ascending: false });
+
+        if (error) throw error;
+
+        res.json({
+            total: users?.length || 0,
+            requirement: VIP_REFERRAL_REQUIREMENT,
+            eligible: users?.map(u => ({
+                address: u.wallet_address,
+                totalReferrals: u.total_referrals_count,
+                directReferrals: u.direct_referrals_count,
+                indirectReferrals: u.indirect_referrals_count,
+                totalStaked: u.total_staked
+            })) || []
+        });
+
+    } catch (error) {
+        console.error('VIP eligible error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/vip/proof/:address/:epochId
+ * Returns Merkle proof for VIP reward claim
+ */
+app.get('/api/vip/proof/:address/:epochId', async (req, res) => {
+    try {
+        const { address, epochId } = req.params;
+        
+        console.log(`🔍 Fetching VIP proof for address: ${address}, epoch: ${epochId}`);
+
+        let query = supabase
+            .from('vip_epoch_data')
+            .select('*');
+
+        if (epochId === 'latest') {
+            query = query.order('created_at', { ascending: false }).limit(1);
+        } else {
+            query = query.eq('id', epochId);
+        }
+
+        const { data: epochs, error } = await query;
+        const epoch = epochs && epochs.length > 0 ? epochs[0] : null;
+
+        if (error || !epoch) {
+            return res.status(404).json({ error: 'VIP epoch not found' });
+        }
+
+        // Parse JSON data
+        const proofs = typeof epoch.proofs === 'string' ? JSON.parse(epoch.proofs) : epoch.proofs;
+        const recipients = typeof epoch.recipients === 'string' ? JSON.parse(epoch.recipients) : epoch.recipients;
+
+        const userProof = proofs[address.toLowerCase()];
+        const userReward = recipients.find(r => r.address.toLowerCase() === address.toLowerCase());
+
+        if (!userProof || !userReward) {
+            return res.status(404).json({ error: 'Address not eligible for this VIP epoch' });
+        }
+
+        // Check if already claimed
+        const { data: claim } = await supabase
+            .from('vip_reward_claims')
+            .select('id')
+            .eq('user_address', address.toLowerCase())
+            .eq('epoch_id', epoch.id)
+            .single();
+
+        res.json({
+            epochId: epoch.blockchain_epoch_id || epoch.id,
+            address: address,
+            amount: userReward.amount,
+            proof: userProof,
+            merkleRoot: epoch.merkle_root,
+            claimed: !!claim,
+            totalReferrals: userReward.totalReferrals,
+            directReferrals: userReward.directReferrals,
+            indirectReferrals: userReward.indirectReferrals
+        });
+
+    } catch (error) {
+        console.error('❌ VIP proof endpoint error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/generate-vip-epoch
+ * Generates a new VIP reward epoch
+ */
+app.post('/api/admin/generate-vip-epoch', async (req, res) => {
+    try {
+        const { totalAmount } = req.body;
+
+        if (!totalAmount) {
+            return res.status(400).json({ error: 'totalAmount required' });
+        }
+
+        const result = await generateVIPEpoch(totalAmount);
+
+        res.json({
+            success: true,
+            epochId: result.epochId,
+            merkleRoot: result.root,
+            recipients: result.recipients.length,
+            data: result
+        });
+
+    } catch (error) {
+        console.error('VIP epoch generation error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/update-vip-epoch-id
+ * Update VIP epoch with blockchain ID
+ */
+app.post('/api/admin/update-vip-epoch-id', async (req, res) => {
+    try {
+       const { databaseEpochId, blockchainEpochId } = req.body;
+        
+        console.log(`🔄 Updating VIP epoch ${databaseEpochId} with blockchain ID ${blockchainEpochId}`);
+        
+        const { error } = await supabase
+            .from('vip_epoch_data')
+            .update({ blockchain_epoch_id: blockchainEpochId })
+            .eq('id', databaseEpochId);
+            
+        if (error) throw error;
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating VIP epoch ID:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/admin/vip-pool-stats
+ * Returns VIP pool balance from the contract
+ */
+app.get('/api/admin/vip-pool-stats', async (req, res) => {
+    try {
+        const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
+        const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';
+        
+        if (!CONTRACT_ADDRESS) throw new Error("Contract address not configured");
+
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        
+        // Note: This will work once contract is updated with VIP functions
+        const ABI = [
+            "function vipPoolBalance() view returns (uint256)",
+            "function yourToken() view returns (address)"
+        ];
+
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+        
+        try {
+            // Get VIP Pool Balance
+            const vipBalance = await contract.vipPoolBalance();
+            
+            // Get Token Address
+            const tokenAddress = await contract.yourToken();
+
+            res.json({
+                vipPoolBalance: vipBalance.toString(),
+                tokenAddress: tokenAddress
+            });
+        } catch (contractError) {
+            // If contract doesn't have VIP functions yet, return zeros
+            console.log('VIP functions not yet deployed, returning zeros');
+            res.json({
+                vipPoolBalance: '0',
+                tokenAddress: null,
+                note: 'Contract not yet updated with VIP functions'
+            });
+        }
+
+    } catch (error) {
+        console.error("VIP Pool Stats Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 const { startListening } = require('./indexer');
 
 app.listen(PORT, () => {
@@ -348,7 +548,12 @@ app.listen(PORT, () => {
     console.log(`   GET /api/referral/resolve/:code`);
     console.log(`   POST /api/wallet/register`);
     console.log(`   POST /api/admin/generate-epoch`);
-    console.log(`   GET /api/epochs\n`);
+    console.log(`   GET /api/epochs`);
+    console.log(`\n👑 VIP Endpoints:`);
+    console.log(`   GET /api/vip/eligible`);
+    console.log(`   GET /api/vip/proof/:address/:epochId`);
+    console.log(`   POST /api/admin/generate-vip-epoch`);
+    console.log(`   GET /api/admin/vip-pool-stats\n`);
 
     // Start Indexer
     console.log(`\n🔄 Starting Blockchain Indexer...`);

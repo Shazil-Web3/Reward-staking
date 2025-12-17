@@ -4,6 +4,7 @@ import AdminGuard from '@/app/components/admin/AdminGuard';
 import DashboardStats from '@/app/components/admin/DashboardStats';
 import UserTable from '@/app/components/admin/UserTable';
 import PoolManager from '@/app/components/admin/PoolManager';
+import VIPPoolManager from '@/app/components/admin/VIPPoolManager';
 import { LayoutDashboard } from 'lucide-react';
 
 export default function AdminPage() {
@@ -38,6 +39,11 @@ export default function AdminPage() {
             {/* Pool Manager - Top Section */}
             <div className="w-full">
               <PoolManager />
+            </div>
+
+            {/* VIP Pool Manager - Middle Section */}
+            <div className="w-full">
+              <VIPPoolManager />
             </div>
 
             {/* User Table - Bottom Section */}

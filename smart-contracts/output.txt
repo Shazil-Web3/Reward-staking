@@ -1,0 +1,21 @@
+﻿No files changed, compilation skipped
+
+Ran 9 tests for test/VIPStaking.t.sol:VIPStakingTest
+[PASS] testFuzz_ClaimFeeCalculation(uint256) (runs: 257, ╬╝: 206920, ~: 206390)
+[FAIL: ERC20InsufficientAllowance(0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9, 0, 1000000000000000000000 [1e21])] test_ClaimDeducts5PercentForVip() (gas: 18195)
+[PASS] test_ClaimVipReward() (gas: 195187)
+[PASS] test_CreateVipEpoch() (gas: 175135)
+[PASS] test_ManualVipFunding() (gas: 58559)
+[PASS] test_RevertIf_DoubleClaim_Vip() (gas: 197609)
+[PASS] test_RevertIf_InsufficientVipBalance() (gas: 15244)
+[PASS] test_RevertIf_NonOwnerFundsVip() (gas: 46677)
+[PASS] test_RevertIf_VerifyFails_Vip() (gas: 166817)
+Suite result: FAILED. 8 passed; 1 failed; 0 skipped; finished in 112.70ms (115.89ms CPU time)
+
+Ran 1 test suite in 114.55ms (112.70ms CPU time): 8 tests passed, 1 failed, 0 skipped (9 total tests)
+
+Failing tests:
+Encountered 1 failing test in test/VIPStaking.t.sol:VIPStakingTest
+[FAIL: ERC20InsufficientAllowance(0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9, 0, 1000000000000000000000 [1e21])] test_ClaimDeducts5PercentForVip() (gas: 18195)
+
+Encountered a total of 1 failing tests, 8 tests succeeded

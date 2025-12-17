@@ -16,7 +16,7 @@ import {
   Wallet,
   Clock,
   Users,
-
+  Crown,
   Copy,
   CheckCircle2,
   Calendar,
@@ -27,7 +27,7 @@ import {
   Lock as LockIcon,
   Unlock
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from '@/hooks/useWallet';
 import StakingInterface from '@/app/components/StakingInterface';
 import { supabase } from '@/lib/supabase';
@@ -39,6 +39,7 @@ const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
   const { withdraw, claim, refetchLocks } = useStaking();
+  const referralInputRef = useRef(null);
   
   const [userData, setUserData] = useState(null);
   const [stakes, setStakes] = useState([]);
@@ -48,6 +49,11 @@ const Dashboard = () => {
   const [rewardStatus, setRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
   const [checkingReward, setCheckingReward] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  
+  // VIP Reward State
+  const [vipRewardStatus, setVipRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
+  const [checkingVipReward, setCheckingVipReward] = useState(false);
+  const [claimingVip, setClaimingVip] = useState(false);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -55,6 +61,7 @@ const Dashboard = () => {
       registerWallet();
       fetchUserData();
       checkRewardStatus();
+      checkVipRewardStatus(); // Check VIP rewards too
 
       // Real-time subscription
       const channel = supabase
@@ -184,6 +191,51 @@ const Dashboard = () => {
       }
   };
 
+  // VIP Reward Functions
+  const checkVipRewardStatus = async () => {
+      try {
+          setCheckingVipReward(true);
+          console.log('👑 Checking VIP reward status for:', address);
+          
+          const url = `${BACKEND_API_URL}/api/vip/proof/${address}/latest`;
+          const res = await fetch(url);
+          
+          if (res.ok) {
+              const data = await res.json();
+              console.log('✅ VIP proof data:', data);
+              
+              setVipRewardStatus({
+                  eligible: true,
+                  amount: data.amount,
+                  proof: data.proof,
+                  epochId: data.epochId,
+                  claimed: data.claimed,
+                  totalReferrals: data.totalReferrals,
+                  directReferrals: data.directReferrals,
+                  indirectReferrals: data.indirectReferrals
+              });
+          } else {
+              setVipRewardStatus({ eligible: false, amount: 0, proof: null, epochId: null });
+          }
+      } catch (e) {
+          console.error("VIP reward check error", e);
+      } finally {
+          setCheckingVipReward(false);
+      }
+  };
+
+  const handleClaimVipReward = async () => {
+      if (!vipRewardStatus.eligible) return;
+      try {
+          setClaimingVip(true);
+          alert("VIP claiming will be available after contract is updated with VIP functions. See VIP_CONTRACT_CHANGES.md");
+      } catch (e) {
+          console.error("VIP claim failed", e);
+      } finally {
+          setClaimingVip(false);
+      }
+  };
+
   const handleWithdraw = async (stakeItem) => {
       if (!confirm("Are you sure you want to withdraw this stake?")) return;
       try {
@@ -213,12 +265,35 @@ const Dashboard = () => {
     return null;
   };
 
-  const handleCopyReferral = () => {
+  const handleCopyReferral = async () => {
     const code = getReferralCode();
     if (!code) return;
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+
+    // Select the text for visual feedback and potential manual copy fallback
+    if (referralInputRef.current) {
+        referralInputRef.current.select();
+    }
+
+    try {
+      // Try modern Clipboard API first
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Clipboard API failed, trying fallback:', err);
+      // Fallback: execCommand('copy')
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+             setCopied(true);
+             setTimeout(() => setCopied(false), 2000);
+        } else {
+             console.error('Fallback copy failed');
+        }
+      } catch (fallbackErr) {
+          console.error('Fallback copy error:', fallbackErr);
+      }
+    }
   };
 
   // Logic for Referral Target based on Total Staked Amount
@@ -284,7 +359,45 @@ const Dashboard = () => {
 
           {isConnected && (
             <>
-                {/* 1. Stats Grid */}
+                {/* 1. Referral Code Section - Moved to Top (Horizontal) */}
+                <Card className="p-6 gradient-border shadow-sm">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="flex-1 space-y-2 text-center md:text-left">
+                            <h3 className="text-xl font-semibold flex items-center justify-center md:justify-start gap-2">
+                                <Users className="h-5 w-5 text-blue-500" />
+                                Share Your Referral Code
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                Share your code for others to use when staking to reach eligibility targets.
+                            </p>
+                        </div>
+                        
+                        <div className="flex-none w-full md:w-auto min-w-[320px]">
+                            <div className="flex gap-2">
+                                <input
+                                    ref={referralInputRef}
+                                    type="text"
+                                    value={getReferralCode() || '...'}
+                                    readOnly
+                                    onClick={handleCopyReferral}
+                                    className="flex-1 px-4 py-2 rounded-lg border bg-muted text-lg font-mono text-center font-bold tracking-wider cursor-pointer hover:bg-muted/80 transition-colors"
+                                />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopyReferral();
+                                    }}
+                                    className="shrink-0 h-10 w-10 flex items-center justify-center rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors z-20"
+                                    title="Copy Referral Code"
+                                >
+                                    {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+
+                {/* 2. Stats Grid */}
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {[
                     {
@@ -295,8 +408,8 @@ const Dashboard = () => {
                     },
                     {
                         title: "Referrals",
-                        value: `${currentReferrals} / ${referralTarget}`,
-                        sub: referralTarget === 0 ? "No Requirement" : "Target",
+                        value: `${userData?.total_referrals_count || 0}`,
+                        sub: `${userData?.direct_referrals_count || 0} direct + ${userData?.indirect_referrals_count || 0} indirect`,
                         icon: <Users className="h-6 w-6 text-secondary" />,
                         bg: "bg-secondary/10",
                     },
@@ -325,8 +438,13 @@ const Dashboard = () => {
                     ))}
                 </div>
 
-                {/* 2. Reward Pool Status Grid */}
-                <div className="grid lg:grid-cols-2 gap-6">
+                {/* 3. Main Staking Interface - Moved Above Reward Pools */}
+                <div className="py-8">
+                    <StakingInterface />
+                </div>
+
+                {/* 4. Reward Pool Status Grid - Below Staking */}
+                <div className="grid lg:grid-cols-2 gap-6 mb-8">
                     {/* Reward Status Card */}
                     <Card className="p-6 space-y-6 border-l-4 border-l-primary">
                         <div className="flex justify-between items-start">
@@ -392,42 +510,98 @@ const Dashboard = () => {
                         </div>
                     </Card>
 
-                    {/* Referral Code Card */}
-                    <Card className="p-6 space-y-6">
-                        <h3 className="text-xl font-semibold flex items-center gap-2">
-                            <Users className="h-5 w-5 text-blue-500" />
-                            Share Your Referral Code
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                            Share your code for others to use when staking to reach eligibility targets.
-                        </p>
-                        
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Your Referral Code</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={getReferralCode() || '...'}
-                                    readOnly
-                                    className="flex-1 px-3 py-2 rounded-lg border bg-muted text-lg font-mono text-center font-bold tracking-wider"
-                                />
-                                <Button
-                                    size="icon"
-                                    onClick={handleCopyReferral}
-                                    className="shrink-0"
-                                >
-                                    {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                </Button>
+                    {/* VIP Reward Pool Card */}
+                    <Card className="p-6 space-y-6 border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/50 to-pink-50/50">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-semibold flex items-center gap-2">
+                                    <Crown className="h-5 w-5 text-purple-600" />
+                                    VIP Reward Pool Status
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Exclusive rewards for users with 100+ referrals (direct + indirect).
+                                </p>
                             </div>
-                            <p className="text-xs text-muted-foreground text-center">
-                                Others can enter this code when staking to link as your referral
-                            </p>
+                            <Badge 
+                                variant={(userData?.total_referrals_count || 0) >= 100 ? "default" : "secondary"} 
+                                className={(userData?.total_referrals_count || 0) >= 100 ? "bg-purple-600" : ""}
+                            >
+                                {(userData?.total_referrals_count || 0) >= 100 ? "VIP Eligible ✨" : "Not Eligible"}
+                            </Badge>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
+                                <span className="text-sm font-medium">Total Referrals</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-bold">
+                                        {userData?.total_referrals_count || 0}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">/ 100</span>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <p className="text-xs text-blue-700 font-medium">Direct</p>
+                                    <p className="text-lg font-bold text-blue-900">{userData?.direct_referrals_count || 0}</p>
+                                </div>
+                                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                    <p className="text-xs text-purple-700 font-medium">Indirect (2 levels)</p>
+                                    <p className="text-lg font-bold text-purple-900">{userData?.indirect_referrals_count || 0}</p>
+                                </div>
+                            </div>
+
+                            {(userData?.total_referrals_count || 0) >= 100 && (
+                                <>
+                                    <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
+                                        <span className="text-sm font-medium">Claimable VIP Reward</span>
+                                        <span className="text-xl font-bold text-purple-600">
+                                            {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e18).toFixed(4) : "0.00"} TOKENS
+                                        </span>
+                                    </div>
+
+                                    <Button 
+                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700" 
+                                        size="lg"
+                                        disabled={!vipRewardStatus.eligible || claimingVip || vipRewardStatus.claimed}
+                                        onClick={handleClaimVipReward}
+                                    >
+                                        {claimingVip ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Claiming...
+                                            </>
+                                        ) : vipRewardStatus.claimed ? (
+                                            "Claimed ✓"
+                                        ) : (
+                                            <>
+                                                <Crown className="mr-2 h-4 w-4" />
+                                                Claim VIP Reward 👑
+                                            </>
+                                        )}
+                                    </Button>
+                                    {!vipRewardStatus.eligible && (
+                                        <p className="text-xs text-center text-muted-foreground">
+                                            VIP rewards will be available when distributed by Admin.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+
+                            {(userData?.total_referrals_count || 0) < 100 && (
+                                <div className="text-center p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg border border-purple-200">
+                                    <p className="text-sm font-medium text-purple-800">
+                                        🎯 Refer {100 - (userData?.total_referrals_count || 0)} more users to join the VIP pool!
+                                    </p>
+                                    <p className="text-xs text-purple-600 mt-1">
+                                        Both direct and indirect referrals (2 levels) count towards your total.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </Card>
                 </div>
-
-                {/* 3. Main Staking Interface */}
-                <StakingInterface />
 
                 {/* 4. Active Staking List */}
                 <Card className="p-6">

@@ -1,0 +1,303 @@
+'use client';
+
+import { Card } from '@/app/components/ui/card';
+import { Button } from '@/app/components/ui/button';
+import { Badge } from '@/app/components/ui/badge';
+import { useState, useEffect } from 'react';
+import { Crown, Wallet, AlertCircle, Loader2, CheckCircle, ArrowRight, RefreshCw, DollarSign, Users } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
+import { parseEther, formatUnits } from 'viem';
+import StakingArtifact from '@/context/staking.json';
+
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
+const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
+
+const VIPPoolManager = () => {
+    const { address } = useAccount();
+    const { writeContractAsync } = useWriteContract();
+    const publicClient = usePublicClient();
+
+    // UI States
+    const [fundAmount, setFundAmount] = useState('');
+    const [distributeAmount, setDistributeAmount] = useState('');
+    const [isFunding, setIsFunding] = useState(false);
+    const [isDistributing, setIsDistributing] = useState(false);
+    const [status, setStatus] = useState('');
+    const [error, setError] = useState('');
+
+    // VIP Pool Data
+    const [vipPoolBalance, setVipPoolBalance] = useState(0n);
+    const [rewardTokenAddress, setRewardTokenAddress] = useState(null);
+    const [vipEligibleUsers, setVipEligibleUsers] = useState([]);
+
+    const fetchVipPoolStats = async () => {
+        try {
+            const res = await fetch(`${BACKEND_API_URL}/api/admin/vip-pool-stats`);
+            if (!res.ok) throw new Error('Failed to fetch VIP pool stats');
+            const data = await res.json();
+
+            setVipPoolBalance(BigInt(data.vipPoolBalance || '0'));
+            setRewardTokenAddress(data.tokenAddress);
+        } catch (err) {
+            console.error("VIP Stats fetch error:", err);
+            if (err.message) setError(err.message);
+        }
+    };
+
+    const fetchVipEligibleUsers = async () => {
+        try {
+            const res = await fetch(`${BACKEND_API_URL}/api/vip/eligible`);
+            if (!res.ok) throw new Error('Failed to fetch VIP eligible users');
+            const data = await res.json();
+            setVipEligibleUsers(data.eligible || []);
+        } catch (err) {
+            console.error("VIP eligible users fetch error:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchVipPoolStats();
+        fetchVipEligibleUsers();
+    }, []);
+
+    const refreshData = () => {
+        fetchVipPoolStats();
+        fetchVipEligibleUsers();
+    };
+
+    // Distribute VIP Rewards
+    const handleDistributeVipRewards = async () => {
+        if (!distributeAmount || parseFloat(distributeAmount) <= 0) {
+            setError('Enter a valid amount to distribute');
+            return;
+        }
+
+        try {
+            setIsDistributing(true);
+            setError('');
+            setStatus('Calculating VIP eligible users via Merkle Tree...');
+
+            const amountInWei = parseEther(distributeAmount).toString();
+
+            // 1. Backend Calculation
+            const response = await fetch(`${BACKEND_API_URL}/api/admin/generate-vip-epoch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ totalAmount: amountInWei })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'VIP epoch generation failed');
+            }
+
+            setStatus(`VIP Merkle Root generated. Contract update required...`);
+
+            // Show message that contract needs to be updated
+            alert(`VIP Epoch generated successfully!\n\n` +
+                `Recipients: ${result.recipients}\n` +
+                `Merkle Root: ${result.merkleRoot}\n\n` +
+                `⚠️ CONTRACT UPDATE REQUIRED\n` +
+                `Please deploy the updated contract with VIP functions.\n` +
+                `See VIP_CONTRACT_CHANGES.md for details.`);
+
+            setStatus('VIP Epoch created in database. Awaiting contract deployment.');
+            setDistributeAmount('');
+            refreshData();
+
+        } catch (err) {
+            console.error('VIP distribution error:', err);
+            setError(err.message || 'Failed to distribute VIP rewards');
+        } finally {
+            setIsDistributing(false);
+        }
+    };
+
+    // Fund VIP Pool Manually
+    const handleFundVipPool = async () => {
+        if (!fundAmount || parseFloat(fundAmount) <= 0) {
+            setError('Enter a valid amount to fund');
+            return;
+        }
+
+        alert('VIP pool funding will be available after contract is updated with fundVipRewardTokens() function.\nSee VIP_CONTRACT_CHANGES.md');
+        setFundAmount('');
+    };
+
+    return (
+        <Card className="col-span-3 p-6 h-fit bg-gradient-to-b from-purple-50 to-pink-50/50 border-2 border-purple-200">
+            <div className="mb-8 flex justify-between items-start">
+                <div>
+                    <h3 className="font-bold text-2xl flex items-center gap-2 text-purple-900">
+                        <Crown className="h-6 w-6 text-purple-600" />
+                        VIP Pool Management
+                    </h3>
+                    <p className="text-muted-foreground mt-1">Manage VIP rewards for users with 100+ referrals</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={refreshData} className="gap-2">
+                    <RefreshCw className="h-4 w-4" /> Refresh
+                </Button>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                {/* VIP Pool Balance */}
+                <div className="p-5 bg-white rounded-xl border border-purple-200 shadow-sm space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <Crown className="h-4 w-4 text-purple-600" />
+                        VIP Pool Balance
+                    </div>
+                    <div className="text-3xl font-bold text-purple-600">
+                        {vipPoolBalance ? formatUnits(vipPoolBalance, 18) : '0'} <span className="text-lg text-muted-foreground font-normal">TOKENS</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Ready for VIP distribution
+                    </p>
+                </div>
+
+                {/* VIP Eligible Users */}
+                <div className="p-5 bg-white rounded-xl border border-purple-200 shadow-sm space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <Users className="h-4 w-4 text-purple-600" />
+                        VIP Eligible Users
+                    </div>
+                    <div className="text-3xl font-bold text-purple-600">
+                        {vipEligibleUsers.length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Users with 100+ total referrals
+                    </p>
+                </div>
+            </div>
+
+            {/* VIP Eligible Users List */}
+            {vipEligibleUsers.length > 0 && (
+                <div className="mb-8 p-4 bg-white rounded-xl border border-purple-200">
+                    <h4 className="font-semibold mb-3 text-purple-900">VIP Eligible Users</h4>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {vipEligibleUsers.slice(0, 10).map((user, i) => (
+                            <div key={i} className="flex justify-between items-center text-sm p-2 hover:bg-purple-50 rounded">
+                                <span className="font-mono text-xs">{user.address.slice(0, 10)}...{user.address.slice(-8)}</span>
+                                <div className="flex gap-3 text-xs">
+                                    <span className="text-purple-600 font-medium">{user.totalReferrals} total</span>
+                                    <span className="text-gray-500">({user.directReferrals}D + {user.indirectReferrals}I)</span>
+                                </div>
+                            </div>
+                        ))}
+                        {vipEligibleUsers.length > 10 && (
+                            <p className="text-xs text-center text-muted-foreground pt-2">
+                                + {vipEligibleUsers.length - 10} more users
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Action Sections */}
+            <div className="space-y-8">
+                {/* 1. Distribute VIP Rewards */}
+                <div className="space-y-4 pt-4 border-t border-purple-200">
+                    <h4 className="font-semibold flex items-center gap-2">
+                        <Crown className="h-5 w-5 text-purple-600" />
+                        Distribute VIP Rewards
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                        Calculate and distribute rewards to VIP users (100+ referrals) for this epoch.
+                    </p>
+
+                    <div className="flex gap-3">
+                        <div className="relative flex-1">
+                            <input
+                                type="number"
+                                value={distributeAmount}
+                                onChange={(e) => setDistributeAmount(e.target.value)}
+                                placeholder="Amount to distribute (e.g. 1000)"
+                                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm focus-visible:ring-2 focus-visible:ring-purple-500"
+                            />
+                            <Crown className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <Button
+                            className="w-48 bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+                            onClick={handleDistributeVipRewards}
+                            disabled={isDistributing || isFunding}
+                        >
+                            {isDistributing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing...
+                                </>
+                            ) : (
+                                <>
+                                    Distribute VIP Rewards
+                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* 2. Fund VIP Pool Manually */}
+                <div className="space-y-4 pt-4 border-t border-purple-200">
+                    <h4 className="font-semibold flex items-center gap-2">
+                        <Wallet className="h-5 w-5 text-green-600" />
+                        Inject VIP Funds
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                        Add tokens from your admin wallet directly into the VIP pool.
+                    </p>
+
+                    <div className="flex gap-3">
+                        <div className="relative flex-1">
+                            <input
+                                type="number"
+                                value={fundAmount}
+                                onChange={(e) => setFundAmount(e.target.value)}
+                                placeholder="Amount to add (e.g. 5000)"
+                                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm focus-visible:ring-2 focus-visible:ring-purple-500"
+                            />
+                            <DollarSign className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <Button
+                            variant="outline"
+                            className="w-48 border-purple-600 text-purple-600 hover:bg-purple-50"
+                            onClick={handleFundVipPool}
+                            disabled={isFunding || isDistributing}
+                        >
+                            {isFunding ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Funding...
+                                </>
+                            ) : (
+                                'Fund VIP Pool'
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Status Messages */}
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-3 flex gap-2 items-start animate-in fade-in slide-in-from-top-2">
+                        <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                        <p className="text-sm text-red-700 font-medium">{error}</p>
+                    </div>
+                )}
+
+                {status && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-md p-3 flex gap-2 items-start animate-in fade-in slide-in-from-top-2">
+                        {status.includes('successfully') || status.includes('created') ? (
+                            <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                        ) : (
+                            <Loader2 className="h-4 w-4 text-purple-600 mt-0.5 animate-spin" />
+                        )}
+                        <p className="text-sm text-purple-700 font-medium">{status}</p>
+                    </div>
+                )}
+            </div>
+        </Card>
+    );
+};
+
+export default VIPPoolManager;
