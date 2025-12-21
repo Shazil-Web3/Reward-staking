@@ -148,7 +148,7 @@ export const StakingProvider = ({ children }) => {
 
         try {
             setIsLoading(true);
-            const amountUnsafe = parseUnits(amountUSDT, 6); // USDT usually has 6 decimals
+            const amountUnsafe = parseUnits(amountUSDT, 6); // USDT has 6 decimals on BSC
 
             // 1. Approve USDT
             console.log("Approving USDT...");

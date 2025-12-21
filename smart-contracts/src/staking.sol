@@ -32,7 +32,7 @@ contract StakingLock is Ownable, Pausable, ReentrancyGuard {
     uint256 public usdtFeesAccrued;            // tracked USDT fees held by this contract
 
     // --- Lock period constants (1–5 years) ---
-    uint256 public constant ONE_YEAR       = 60; // 1 minute for testing (CHANGE BACK TO 365 days FOR PROD)
+    uint256 public constant ONE_YEAR       = 31536000; // 365 days (PRODUCTION)
     uint256 public constant MIN_LOCK       = ONE_YEAR;        // 1 year
     uint256 public constant MAX_LOCK       = ONE_YEAR * 5;    // 5 years
     uint8   public constant MAX_LOCK_YEARS = 5;

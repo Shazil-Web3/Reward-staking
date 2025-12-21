@@ -25,10 +25,12 @@ import {
   ArrowRight,
   Loader2,
   Lock as LockIcon,
-  Unlock
+  Unlock,
+  AlertCircle
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from '@/hooks/useWallet';
+import { useSwitchChain } from 'wagmi';
 import StakingInterface from '@/app/components/StakingInterface';
 import { supabase } from '@/lib/supabase';
 import { useStaking } from '@/context/context';
@@ -38,12 +40,14 @@ const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://local
 const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
-  const { withdraw, claim, claimVip, refetchLocks } = useStaking();
+  const { chains, switchChain } = useSwitchChain();
+const { withdraw, claim, claimVip, refetchLocks } = useStaking();
   const referralInputRef = useRef(null);
   
   const [userData, setUserData] = useState(null);
   const [stakes, setStakes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [switching, setSwitching] = useState(false);
   
   // Reward State
   const [rewardStatus, setRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
@@ -54,6 +58,9 @@ const Dashboard = () => {
   const [vipRewardStatus, setVipRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
   const [checkingVipReward, setCheckingVipReward] = useState(false);
   const [claimingVip, setClaimingVip] = useState(false);
+
+  // Check if user is on BNB Chain (chainId 56)
+  const isCorrectNetwork = chain?.id === 56;
 
   useEffect(() => {
     if (isConnected && address) {
@@ -337,6 +344,19 @@ const Dashboard = () => {
     return null;
   };
 
+  // Handle network switch
+  const handleSwitchNetwork = async () => {
+    try {
+      setSwitching(true);
+      await switchChain({ chainId: 56 }); // BNB Chain
+    } catch (error) {
+      console.error('Failed to switch network:', error);
+      alert('Failed to switch network. Please switch to BNB Chain manually in your wallet.');
+    } finally {
+      setSwitching(false);
+    }
+  };
+
   const handleCopyReferral = async () => {
     const code = getReferralCode();
     if (!code) return;
@@ -428,6 +448,61 @@ const Dashboard = () => {
                 )}
             </Card>
           </div>
+
+          {/* Network Warning Banner */}
+          {isConnected && !isCorrectNetwork && (
+            <div className="mb-6">
+              <Card className="p-6 border-2 border-orange-500 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-950 dark:to-yellow-950 shadow-lg">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="p-3 bg-orange-500 rounded-full">
+                      <AlertCircle className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-orange-900 dark:text-orange-100 mb-2">
+                        ⚠️ Wrong Network Detected
+                      </h3>
+                      <p className="text-sm text-orange-800 dark:text-orange-200 mb-1">
+                        This application only works on <span className="font-semibold">BNB Chain (Mainnet)</span>.
+                      </p>
+                      {chain?.name && (
+                        <p className="text-sm text-orange-700 dark:text-orange-300">
+                          Currently connected to: <span className="font-semibold">{chain.name}</span> (Chain ID: {chain.id})
+                        </p>
+                      )}
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
+                        Click the button below to automatically switch to BNB Chain →
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 items-center md:items-end">
+                    <Button 
+                      onClick={handleSwitchNetwork}
+                      disabled={switching}
+                      size="lg"
+                      className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-8 py-6 text-base shadow-lg"
+                    >
+                      {switching ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Switching Network...
+                        </>
+                      ) : (
+                        <>
+                          <ArrowRight className="mr-2 h-5 w-5" />
+                          Switch to BNB Chain
+                        </>
+                      )}
+                    </Button>
+                    <div className="flex items-center gap-2 text-xs text-orange-700 dark:text-orange-300">
+                      <div className="h-2 w-2 bg-orange-500 rounded-full animate-pulse"></div>
+                      Required: BNB Chain (ID: 56)
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
 
           {isConnected && (
             <>

@@ -133,9 +133,8 @@ const StakingInterface = () => {
 
       const packageData = packageOptions.find(pkg => pkg.value === selectedPackage);
       const packageId = packageData.id;
-      // TEST MODE: 1 Year = 60 Seconds
-      // Update this back to 365 * 24 * 60 * 60 for Production!
-      const durationSeconds = selectedYears * 60;
+      // PRODUCTION: 1 Year = 365 days
+      const durationSeconds = selectedYears * 365 * 24 * 60 * 60;
 
       setTxStatus('Approving USDT...');
       const receipt = await stake(
