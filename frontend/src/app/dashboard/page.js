@@ -134,28 +134,46 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
   const fetchUserData = async () => {
     setLoading(true);
     try {
-        console.log("Fetching data for:", address);
+        console.log("📊 Fetching data for:", address);
+        console.log("📊 Address (lowercase):", address.toLowerCase());
         
         // Fetch User Info
+        console.log("🔍 Querying users table...");
         const { data: user, error: userError } = await supabase
             .from('users')
             .select('*')
-            .eq('wallet_address', address.toLowerCase()) // Fix: Ensure lowercase match
+            .eq('wallet_address', address.toLowerCase())
             .single();
         
+        if (userError) {
+            console.error("❌ User query error:", userError);
+        } else {
+            console.log("✅ User data:", user);
+        }
+        
         if (user) setUserData(user);
+        else console.warn("⚠️ No user found in database");
 
         // Fetch Stakes
+        console.log("🔍 Querying stakes table...");
         const { data: userStakes, error: stakesError } = await supabase
             .from('stakes')
             .select('*')
-            .eq('user_address', address.toLowerCase()) // Fix: Ensure lowercase match
+            .eq('user_address', address.toLowerCase())
             .order('created_at', { ascending: false });
 
+        if (stakesError) {
+            console.error("❌ Stakes query error:", stakesError);
+        } else {
+            console.log("✅ Stakes data:", userStakes);
+            console.log("✅ Number of stakes:", userStakes?.length || 0);
+        }
+
         if (userStakes) setStakes(userStakes);
+        else console.warn("⚠️ No stakes found in database");
 
     } catch (e) {
-        console.error("Error loading dashboard data", e);
+        console.error("❌ Error loading dashboard data:", e);
     } finally {
         setLoading(false);
     }

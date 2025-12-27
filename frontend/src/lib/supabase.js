@@ -1,15 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY; // Fallback for testing, but warn
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Debugging: Log if variables are missing
+// Debug: Log configuration (remove in production)
+console.log('🔧 Supabase Config:', {
+  url: supabaseUrl,
+  keyPresent: !!supabaseAnonKey,
+  keyLength: supabaseAnonKey?.length
+});
+
+// Validate configuration
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("⚠️ Supabase Config Missing. Defaults will be used.");
+  console.error('❌ Supabase configuration missing!');
+  console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl);
+  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Present' : 'Missing');
+  throw new Error('Missing Supabase environment variables');
 }
 
-// Prevent crash by using a safe fallback
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co', 
-  supabaseAnonKey || 'placeholder'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+console.log('✅ Supabase client initialized');

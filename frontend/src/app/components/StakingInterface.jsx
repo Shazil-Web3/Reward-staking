@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
-import { DollarSign, Clock, TrendingUp, Loader2, Users, X } from 'lucide-react';
+import { DollarSign, Clock, TrendingUp, Loader2, Users, X, RefreshCw } from 'lucide-react';
 import { useStaking } from '@/context/context';
 import { useAccount } from 'wagmi';
 import { useSearchParams } from 'next/navigation';
 import { isAddress } from 'viem';
+import { usePancakePrice } from '@/hooks/usePancakePrice';
 
 const StakingInterface = () => {
   const searchParams = useSearchParams();
@@ -24,6 +25,9 @@ const StakingInterface = () => {
   const [showReferralPopup, setShowReferralPopup] = useState(false);
   const [referralAddress, setReferralAddress] = useState('');
   const [referralError, setReferralError] = useState('');
+
+  // Live price from PancakeSwap
+  const { cctAmount, pricePerToken, wbnbQuote, loading: priceLoading, error: priceError } = usePancakePrice(stakingAmount);
 
   // Get referrer from URL on mount (e.g., /ref/0xAddress)
   useEffect(() => {
@@ -252,6 +256,76 @@ const StakingInterface = () => {
             ))}
           </div>
         </div>
+
+        {/* Live PancakeSwap Price */}
+        {stakingAmount && parseFloat(stakingAmount) >= 50 && (
+          <Card className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950 border-2  border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                <RefreshCw className={`h-4 w-4 ${priceLoading ? 'animate-spin' : ''}`} />
+                Live PancakeSwap Conversion
+              </h3>
+              <span className="text-xs text-blue-600 dark:text-blue-300">Real-time</span>
+            </div>
+
+            {priceLoading ? (
+              <div className="flex items-center gap-2 text-blue-700">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Fetching price...</span>
+              </div>
+            ) : priceError ? (
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm text-orange-700">⚠️ {priceError}</p>
+                <p className="text-xs text-orange-600 mt-1">Low liquidity detected. Contact admin for manual distribution.</p>
+              </div>
+            ) : cctAmount ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-white dark:bg-gray-900 rounded-lg border border-blue-200">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mb-1">You will receive (after 10% fee):</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                    ≈ {parseFloat(cctAmount) * 0.9 < 0.0001
+                      ? (parseFloat(cctAmount) * 0.9).toExponential(4)
+                      : (parseFloat(cctAmount) * 0.9).toFixed(4)} CCT
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded">
+                    <p className="text-blue-700 dark:text-blue-300">Price (1 CCT)</p>
+                    <p className="font-semibold text-blue-900 dark:text-blue-100">
+                      ~${pricePerToken ? pricePerToken.toFixed(6) : '0.00'}
+                    </p>
+                  </div>
+                  <div className="p-2 bg-cyan-100 dark:bg-cyan-900 rounded">
+                    <p className="text-cyan-700 dark:text-cyan-300">Before Fee</p>
+                    <p className="font-semibold text-cyan-900 dark:text-cyan-100">
+                      {parseFloat(cctAmount).toFixed(2)} CCT
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-center text-blue-600 dark:text-blue-400">
+                  🔄 Price updates automatically from PancakeSwap
+                </p>
+              </div>
+            ) : wbnbQuote ? (
+              <div className="space-y-2">
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm font-semibold text-yellow-800">⚠️ CCT Liquidity Not Found</p>
+                  <p className="text-xs text-yellow-700 mt-1">System is working, but CCT pool is empty.</p>
+                </div>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <p className="text-xs text-gray-500 mb-1">System Check (WBNB Reference):</p>
+                  <p className="font-mono text-sm text-gray-700">
+                    Input: {stakingAmount} USDT<br />
+                    Output: {parseFloat(wbnbQuote).toFixed(6)} WBNB
+                  </p>
+                  <p className="text-[10px] text-green-600 mt-1">✅ RPC & Router Connected Successfully</p>
+                </div>
+              </div>
+            ) : null}
+          </Card>
+        )}
 
         {/* Staking Details */}
         {stakingAmount && parseFloat(stakingAmount) >= 50 && (
