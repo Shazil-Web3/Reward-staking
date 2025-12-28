@@ -41,79 +41,73 @@ const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
   const { chains, switchChain } = useSwitchChain();
-const { withdraw, claim, claimVip, refetchLocks } = useStaking();
+  const { withdraw, stakes: contractStakes, refetchStakes, isLoading: stakesLoading, claimReward, claimVIPReward } = useStaking();
   const referralInputRef = useRef(null);
   
   const [userData, setUserData] = useState(null);
   const [stakes, setStakes] = useState([]);
+  const [deposits, setDeposits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
   
-  // Reward State
+  // Withdrawing state
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  // Reward State (Backend-managed)
   const [rewardStatus, setRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
   const [checkingReward, setCheckingReward] = useState(false);
   const [claiming, setClaiming] = useState(false);
   
-  // VIP Reward State
+  // VIP Reward State (Backend-managed)
   const [vipRewardStatus, setVipRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
   const [checkingVipReward, setCheckingVipReward] = useState(false);
   const [claimingVip, setClaimingVip] = useState(false);
 
-  // Check if user is on BNB Chain (chainId 56)
-  const isCorrectNetwork = chain?.id === 56;
+  const isCorrectNetwork = true; 
 
   useEffect(() => {
     if (isConnected && address) {
-      // Register wallet to ensure referral code exists in database
       registerWallet();
       fetchUserData();
       checkRewardStatus();
-      checkVipRewardStatus(); // Check VIP rewards too
+      checkVipRewardStatus();
 
-      // Real-time subscription
       const channel = supabase
         .channel('dashboard-updates')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'stakes', filter: `user_address=eq.${address.toLowerCase()}` },
-          (payload) => {
-            console.log("Real-time stake update:", payload);
-            fetchUserData(); 
-          }
+          () => fetchUserData()
+        )
+        .on(
+          'postgres_changes', 
+          { event: '*', schema: 'public', table: 'deposits', filter: `user_address=eq.${address.toLowerCase()}` },
+          () => fetchUserData()
         )
         .on(
             'postgres_changes', 
             { event: '*', schema: 'public', table: 'users', filter: `wallet_address=eq.${address.toLowerCase()}` },
-            (payload) => {
-                console.log("Real-time user update:", payload);
-                fetchUserData();
-            }
+            () => fetchUserData()
         )
         .subscribe();
 
-      // Listen for reward claim events from context
-      const handleRewardClaimed = () => {
-        console.log('✅ Reward claimed event received, refreshing status...');
+      const handleRewardUpdate = () => {
         checkRewardStatus();
         checkVipRewardStatus();
       };
-      
-      const handleVipRewardClaimed = () => {
-        console.log('✅ VIP reward claimed event received, refreshing status...');
-        checkVipRewardStatus();
-      };
-      
-      window.addEventListener('reward-claimed', handleRewardClaimed);
-      window.addEventListener('vip-reward-claimed', handleVipRewardClaimed);
+
+      window.addEventListener('reward-claimed', handleRewardUpdate);
+      window.addEventListener('vip-reward-claimed', handleRewardUpdate);
 
       return () => {
         supabase.removeChannel(channel);
-        window.removeEventListener('reward-claimed', handleRewardClaimed);
-        window.removeEventListener('vip-reward-claimed', handleVipRewardClaimed);
+        window.removeEventListener('reward-claimed', handleRewardUpdate);
+        window.removeEventListener('vip-reward-claimed', handleRewardUpdate);
       };
     } else {
         setUserData(null);
         setStakes([]);
+        setDeposits([]);
     }
   }, [isConnected, address]);
 
@@ -127,89 +121,59 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
       });
     } catch (error) {
       console.log('Wallet registration info:', error);
-      // Non-critical, don't show error to user
     }
   };
 
   const fetchUserData = async () => {
     setLoading(true);
     try {
-        console.log("📊 Fetching data for:", address);
-        console.log("📊 Address (lowercase):", address.toLowerCase());
-        
-        // Fetch User Info
-        console.log("🔍 Querying users table...");
-        const { data: user, error: userError } = await supabase
+        const { data: user } = await supabase
             .from('users')
             .select('*')
             .eq('wallet_address', address.toLowerCase())
             .single();
         
-        if (userError) {
-            console.error("❌ User query error:", userError);
-        } else {
-            console.log("✅ User data:", user);
-        }
-        
         if (user) setUserData(user);
-        else console.warn("⚠️ No user found in database");
 
-        // Fetch Stakes
-        console.log("🔍 Querying stakes table...");
-        const { data: userStakes, error: stakesError } = await supabase
+        const { data: userStakes } = await supabase
             .from('stakes')
             .select('*')
             .eq('user_address', address.toLowerCase())
             .order('created_at', { ascending: false });
 
-        if (stakesError) {
-            console.error("❌ Stakes query error:", stakesError);
-        } else {
-            console.log("✅ Stakes data:", userStakes);
-            console.log("✅ Number of stakes:", userStakes?.length || 0);
-        }
-
         if (userStakes) setStakes(userStakes);
-        else console.warn("⚠️ No stakes found in database");
+
+        const { data: userDeposits } = await supabase
+          .from('deposits')
+          .select('*')
+          .eq('user_address', address.toLowerCase())
+          .order('created_at', { ascending: false });
+
+        if (userDeposits) setDeposits(userDeposits);
 
     } catch (e) {
-        console.error("❌ Error loading dashboard data:", e);
+        console.error("Error loading dashboard data:", e);
     } finally {
         setLoading(false);
     }
   };
 
+  // Backend-managed reward checking
   const checkRewardStatus = async () => {
       try {
           setCheckingReward(true);
-          console.log('🔍 Checking reward status for:', address);
-          
-          // Fetch latest epoch proof
           const url = `${BACKEND_API_URL}/api/rewards/proof/${address}/latest`;
-          console.log('📡 Fetching from:', url);
-          
           const res = await fetch(url);
-          console.log('📊 Response status:', res.status);
-          
           if (res.ok) {
               const data = await res.json();
-              console.log('✅ Received proof data:', {
-                  epochId: data.epochId,
-                  amount: data.amount,
-                  proofLength: data.proof?.length || 0,
-                  claimed: data.claimed
-              });
-              
               setRewardStatus({
                   eligible: true,
-                  amount: data.amount, // in wei
+                  amount: data.amount,
                   proof: data.proof,
                   epochId: data.epochId,
-                  claimed: data.claimed // New field from API
+                  claimed: data.claimed
               });
           } else {
-              const errorText = await res.text();
-              console.log('❌ API Error:', res.status, errorText);
               setRewardStatus({ eligible: false, amount: 0, proof: null, epochId: null });
           }
       } catch (e) {
@@ -219,86 +183,13 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
       }
   };
 
-  // Helper function to fetch reward status and return the data
-  const fetchRewardStatusData = async () => {
-      try {
-          const url = `${BACKEND_API_URL}/api/rewards/proof/${address}/latest`;
-          const res = await fetch(url);
-          
-          if (res.ok) {
-              const data = await res.json();
-              return {
-                  eligible: true,
-                  amount: data.amount,
-                  proof: data.proof,
-                  epochId: data.epochId,
-                  claimed: data.claimed
-              };
-          }
-          return null;
-      } catch (e) {
-          console.error("Error fetching reward status:", e);
-          return null;
-      }
-  };
-
-  const handleClaimReward = async () => {
-      if (!rewardStatus.eligible) return;
-      try {
-          setClaiming(true);
-          console.log('🎁 Claiming reward for epoch:', rewardStatus.epochId);
-          
-          await claim(rewardStatus.epochId, rewardStatus.amount, rewardStatus.proof);
-          
-          console.log('✅ Claim transaction succeeded, waiting for indexer...');
-          
-          // Wait for indexer to process the claim event (usually takes 2-5 seconds)
-          // Poll the API until it shows claimed status
-          let attempts = 0;
-          const maxAttempts = 10;
-          const pollInterval = 2000; // 2 seconds
-          
-          while (attempts < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, pollInterval));
-              console.log(`🔄 Checking claim status (attempt ${attempts + 1}/${maxAttempts})...`);
-              
-              const status = await fetchRewardStatusData(); // Use the helper to get fresh data
-              
-              if (status?.claimed) {
-                  console.log('✅ Claim confirmed in database!');
-                  setRewardStatus(status); // Update state with confirmed status
-                  break;
-              }
-              
-              attempts++;
-          }
-          
-          if (attempts >= maxAttempts) {
-              console.warn('⚠️ Claim may still be processing. Refresh page to see updated status.');
-              alert('Claim transaction sent! It may take a minute for the status to update. Please refresh the page.');
-          }
-          
-      } catch (e) {
-          console.error("Claim failed", e);
-          alert('Claim failed: ' + e.message);
-      } finally {
-          setClaiming(false);
-      }
-  };
-
-  // VIP Reward Functions
   const checkVipRewardStatus = async () => {
       try {
           setCheckingVipReward(true);
-          console.log('👑 Checking VIP reward status for:', address);
-          
           const url = `${BACKEND_API_URL}/api/vip/proof/${address}/latest`;
           const res = await fetch(url);
-          
           if (res.ok) {
               const data = await res.json();
-              console.log('✅ VIP proof data:', data);
-              
               setVipRewardStatus({
                   eligible: true,
                   amount: data.amount,
@@ -319,12 +210,63 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
       }
   };
 
+  // Direct contract-based claim handler
+  const handleClaimReward = async () => {
+      if (!rewardStatus.eligible || rewardStatus.claimed) return;
+      try {
+          setClaiming(true);
+          
+          // Call contract directly with Merkle proof
+          await claimReward(
+              rewardStatus.epochId,
+              rewardStatus.amount,
+              rewardStatus.proof
+          );
+          
+          // Notify backend of successful claim
+          await fetch(`${BACKEND_API_URL}/api/rewards/mark-claimed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  walletAddress: address,
+                  epochId: rewardStatus.epochId
+              })
+          });
+          
+          alert('Reward claimed successfully!');
+          checkRewardStatus();
+      } catch (e) {
+          console.error("Claim failed", e);
+          alert('Claim failed: ' + e.message);
+      } finally {
+          setClaiming(false);
+      }
+  };
+
   const handleClaimVipReward = async () => {
-      if (!vipRewardStatus.eligible) return;
+      if (!vipRewardStatus.eligible || vipRewardStatus.claimed) return;
       try {
           setClaimingVip(true);
-          await claimVip(vipRewardStatus.epochId, vipRewardStatus.amount, vipRewardStatus.proof);
-          // Refresh happens automatically via event listener
+          
+          // Call contract directly with Merkle proof
+          await claimVIPReward(
+              vipRewardStatus.epochId,
+              vipRewardStatus.amount,
+              vipRewardStatus.proof
+          );
+          
+          // Notify backend of successful claim
+          await fetch(`${BACKEND_API_URL}/api/vip/mark-claimed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  walletAddress: address,
+                  epochId: vipRewardStatus.epochId
+              })
+          });
+          
+          alert('VIP reward claimed successfully!');
+          checkVipRewardStatus();
       } catch (e) {
           console.error("VIP claim failed", e);
           alert("VIP claim failed: " + e.message);
@@ -333,43 +275,37 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
       }
   };
 
-  const handleWithdraw = async (stakeItem) => {
+  const handleWithdraw = async (stakeIndex) => {
       if (!confirm("Are you sure you want to withdraw this stake?")) return;
       try {
-          // Use the lock_id from DB which corresponds to contract index
-          if (stakeItem.lock_id === undefined || stakeItem.lock_id === null) {
-              alert("Lock ID missing");
-              return;
-          }
-          await withdraw(stakeItem.lock_id);
-          fetchUserData(); // Refresh list
+          setWithdrawing(true);
+          await withdraw(stakeIndex);
+          // Refresh data from both contract and database
+          await Promise.all([
+              refetchStakes(),
+              fetchUserData()
+          ]);
       } catch (e) {
           console.error("Withdraw failed", e);
-          alert("Withdraw failed: " + e.message);
+          alert("Withdraw failed: " + (e.message || "Unknown error"));
+      } finally {
+          setWithdrawing(false);
       }
   };
 
-
-  // Generate referral code from wallet address (always available)
   const getReferralCode = () => {
-    if (userData?.referral_code) {
-      return userData.referral_code;
-    }
-    // If no userData yet, generate from wallet address
-    if (address) {
-      return address.substring(2, 8).toUpperCase();
-    }
+    if (userData?.referral_code) return userData.referral_code;
+    if (address) return address.substring(2, 8).toUpperCase();
     return null;
   };
 
-  // Handle network switch
   const handleSwitchNetwork = async () => {
     try {
       setSwitching(true);
-      await switchChain({ chainId: 56 }); // BNB Chain
+      await switchChain({ chainId: 56 });
     } catch (error) {
-      console.error('Failed to switch network:', error);
-      alert('Failed to switch network. Please switch to BNB Chain manually in your wallet.');
+      console.error(error);
+      alert('Failed to switch network.');
     } finally {
       setSwitching(false);
     }
@@ -378,39 +314,20 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
   const handleCopyReferral = async () => {
     const code = getReferralCode();
     if (!code) return;
-
-    // Select the text for visual feedback and potential manual copy fallback
-    if (referralInputRef.current) {
-        referralInputRef.current.select();
-    }
-
+    if (referralInputRef.current) referralInputRef.current.select();
     try {
-      // Try modern Clipboard API first
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Clipboard API failed, trying fallback:', err);
-      // Fallback: execCommand('copy')
-      try {
-        const successful = document.execCommand('copy');
-        if (successful) {
-             setCopied(true);
-             setTimeout(() => setCopied(false), 2000);
-        } else {
-             console.error('Fallback copy failed');
-        }
-      } catch (fallbackErr) {
-          console.error('Fallback copy error:', fallbackErr);
-      }
+      console.error(err);
     }
   };
 
-  // Logic for Referral Target based on Total Staked Amount
   const getReferralTarget = (totalStaked) => {
-      if (totalStaked >= 1000) return 0;  // $1000+ = No referrals needed
-      if (totalStaked >= 100) return 5;   // $100-$1000 = 5 referrals
-      return 10;                           // $0-$100 = 10 referrals
+      // Updated: Removed $1000 tier
+      if (totalStaked >= 100) return 5;  // $100+ = 5 referrals
+      return 10;                          // $50-$99 = 10 referrals
   };
 
   const totalStaked = userData?.total_staked || 0;
@@ -420,7 +337,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
 
   return (
     <div className="py-12 bg-muted/30 relative overflow-hidden min-h-screen">
-        {/* Dashboard-specific orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="orb orb-1 w-96 h-96 top-20 -left-20" />
           <div className="orb orb-2 w-80 h-80 top-60 right-10" />
@@ -429,7 +345,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
         
         <div className="container max-w-7xl space-y-8 relative z-10">
           
-          {/* Header & Wallet Profile */}
           <div className="grid gap-8">
             <div className="space-y-2">
                 <h1 className="text-4xl font-bold">Dashboard</h1>
@@ -467,64 +382,8 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
             </Card>
           </div>
 
-          {/* Network Warning Banner */}
-          {isConnected && !isCorrectNetwork && (
-            <div className="mb-6">
-              <Card className="p-6 border-2 border-orange-500 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-950 dark:to-yellow-950 shadow-lg">
-                <div className="flex flex-col md:flex-row items-center gap-6">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="p-3 bg-orange-500 rounded-full">
-                      <AlertCircle className="h-8 w-8 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold text-orange-900 dark:text-orange-100 mb-2">
-                        ⚠️ Wrong Network Detected
-                      </h3>
-                      <p className="text-sm text-orange-800 dark:text-orange-200 mb-1">
-                        This application only works on <span className="font-semibold">BNB Chain (Mainnet)</span>.
-                      </p>
-                      {chain?.name && (
-                        <p className="text-sm text-orange-700 dark:text-orange-300">
-                          Currently connected to: <span className="font-semibold">{chain.name}</span> (Chain ID: {chain.id})
-                        </p>
-                      )}
-                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
-                        Click the button below to automatically switch to BNB Chain →
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 items-center md:items-end">
-                    <Button 
-                      onClick={handleSwitchNetwork}
-                      disabled={switching}
-                      size="lg"
-                      className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-8 py-6 text-base shadow-lg"
-                    >
-                      {switching ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Switching Network...
-                        </>
-                      ) : (
-                        <>
-                          <ArrowRight className="mr-2 h-5 w-5" />
-                          Switch to BNB Chain
-                        </>
-                      )}
-                    </Button>
-                    <div className="flex items-center gap-2 text-xs text-orange-700 dark:text-orange-300">
-                      <div className="h-2 w-2 bg-orange-500 rounded-full animate-pulse"></div>
-                      Required: BNB Chain (ID: 56)
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
-
           {isConnected && (
             <>
-                {/* 1. Referral Code Section - Moved to Top (Horizontal) */}
                 <Card className="p-6 gradient-border shadow-sm">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="flex-1 space-y-2 text-center md:text-left">
@@ -533,7 +392,7 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                 Share Your Referral Code
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                                Share your code for others to use when staking to reach eligibility targets.
+                                Share your code for others to use when staking.
                             </p>
                         </div>
                         
@@ -553,7 +412,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                         handleCopyReferral();
                                     }}
                                     className="shrink-0 h-10 w-10 flex items-center justify-center rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors z-20"
-                                    title="Copy Referral Code"
                                 >
                                     {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                 </button>
@@ -562,7 +420,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                     </div>
                 </Card>
 
-                {/* 2. Stats Grid */}
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {[
                     {
@@ -584,7 +441,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                         icon: <LockIcon className="h-6 w-6 text-primary" />,
                         bg: "bg-primary/10",
                     },
-
                     ].map((stat, i) => (
                     <Card key={i} className="p-6 transition-transform hover:scale-105">
                         <div className="flex items-center gap-4">
@@ -603,173 +459,58 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                     ))}
                 </div>
 
-                {/* 3. Main Staking Interface - Moved Above Reward Pools */}
                 <div className="py-8">
                     <StakingInterface />
                 </div>
+                
+                {deposits.length > 0 && (
+                  <Card className="p-6 mb-8 border-l-4 border-l-yellow-500">
+                     <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-yellow-600" />
+                        Pending & Verified Deposits
+                    </h3>
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Order ID</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Time</TableHead>
+                                    <TableHead>Transaction</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {deposits.map((deposit) => (
+                                    <TableRow key={deposit.order_id}>
+                                        <TableCell className="font-mono text-xs">{deposit.order_id.slice(0, 10)}...</TableCell>
+                                        <TableCell className="font-bold">${deposit.amount}</TableCell>
+                                        <TableCell>
+                                            <Badge className={
+                                                deposit.status === 'verified' ? 'bg-blue-500' :
+                                                deposit.status === 'approved' ? 'bg-green-500' : 
+                                                deposit.status === 'pending' ? 'bg-yellow-500' : ''
+                                            }>
+                                                {deposit.status === 'verified' ? 'Verified (Wait for Admin)' : deposit.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm">{new Date(deposit.created_at).toLocaleString()}</TableCell>
+                                        <TableCell>
+                                            {deposit.tx_hash ? (
+                                                <a href={`https://etherscan.io/tx/${deposit.tx_hash}`} target="_blank" className="text-blue-500 hover:underline text-xs">
+                                                    View TX
+                                                </a>
+                                            ) : '-'}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                  </Card>
+                )}
 
-                {/* 4. Reward Pool Status Grid - Below Staking */}
-                <div className="grid lg:grid-cols-2 gap-6 mb-8">
-                    {/* Reward Status Card */}
-                    <Card className="p-6 space-y-6 border-l-4 border-l-primary">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h3 className="text-xl font-semibold flex items-center gap-2">
-                                    <Coins className="h-5 w-5 text-yellow-500" />
-                                    Reward Pool Status
-                                </h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Check your eligibility and claim rewards from the pool.
-                                </p>
-                            </div>
-                            <Badge variant={rewardStatus.eligible ? "default" : "secondary"}>
-                                {rewardStatus.eligible ? "Reward Available" : "No Pending Reward"}
-                            </Badge>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                                <span className="text-sm font-medium">Referral Status</span>
-                                <div className="flex items-center gap-2">
-                                    {isReferralEligible ? (
-                                        <span className="text-green-600 flex items-center text-sm font-bold">
-                                            <CheckCircle2 className="h-4 w-4 mr-1" /> Eligible
-                                        </span>
-                                    ) : (
-                                        <span className="text-red-500 flex items-center text-sm font-bold">
-                                            Needs {Math.max(0, referralTarget - currentReferrals)} more
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                                <span className="text-sm font-medium">Claimable Amount</span>
-                                <span className="text-xl font-bold">
-                                    {rewardStatus.amount > 0 ? (rewardStatus.amount / 1e18).toFixed(4) : "0.00"} TOKENS
-                                </span>
-                            </div>
-
-                            <Button 
-                                className="w-full gradient-primary text-white" 
-                                size="lg"
-                                disabled={!rewardStatus.eligible || claiming || rewardStatus.claimed}
-                                onClick={handleClaimReward}
-                            >
-                                {claiming ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Claiming...
-                                    </>
-                                ) : rewardStatus.claimed ? (
-                                    "Claimed ✓"
-                                ) : (
-                                    "Claim Reward"
-                                )}
-                            </Button>
-                            {!rewardStatus.eligible && (
-                                <p className="text-xs text-center text-muted-foreground">
-                                    Withdrawal button will activate automatically when rewards are distributed by Admin.
-                                </p>
-                            )}
-                        </div>
-                    </Card>
-
-                    {/* VIP Reward Pool Card */}
-                    <Card className="p-6 space-y-6 border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/50 to-pink-50/50">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h3 className="text-xl font-semibold flex items-center gap-2">
-                                    <Crown className="h-5 w-5 text-purple-600" />
-                                    VIP Reward Pool Status
-                                </h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Exclusive rewards for users with 100+ referrals (direct + indirect).
-                                </p>
-                            </div>
-                            <Badge 
-                                variant={(userData?.total_referrals_count || 0) >= 100 ? "default" : "secondary"} 
-                                className={(userData?.total_referrals_count || 0) >= 100 ? "bg-purple-600" : ""}
-                            >
-                                {(userData?.total_referrals_count || 0) >= 100 ? "VIP Eligible ✨" : "Not Eligible"}
-                            </Badge>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                                <span className="text-sm font-medium">Total Referrals</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-2xl font-bold">
-                                        {userData?.total_referrals_count || 0}
-                                    </span>
-                                    <span className="text-sm text-muted-foreground">/ 100</span>
-                                </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                    <p className="text-xs text-blue-700 font-medium">Direct</p>
-                                    <p className="text-lg font-bold text-blue-900">{userData?.direct_referrals_count || 0}</p>
-                                </div>
-                                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                                    <p className="text-xs text-purple-700 font-medium">Indirect (2 levels)</p>
-                                    <p className="text-lg font-bold text-purple-900">{userData?.indirect_referrals_count || 0}</p>
-                                </div>
-                            </div>
-
-                            {(userData?.total_referrals_count || 0) >= 100 && (
-                                <>
-                                    <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                                        <span className="text-sm font-medium">Claimable VIP Reward</span>
-                                        <span className="text-xl font-bold text-purple-600">
-                                            {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e18).toFixed(4) : "0.00"} TOKENS
-                                        </span>
-                                    </div>
-
-                                    <Button 
-                                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700" 
-                                        size="lg"
-                                        disabled={!vipRewardStatus.eligible || claimingVip || vipRewardStatus.claimed}
-                                        onClick={handleClaimVipReward}
-                                    >
-                                        {claimingVip ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Claiming...
-                                            </>
-                                        ) : vipRewardStatus.claimed ? (
-                                            "Claimed ✓"
-                                        ) : (
-                                            <>
-                                                <Crown className="mr-2 h-4 w-4" />
-                                                Claim VIP Reward 👑
-                                            </>
-                                        )}
-                                    </Button>
-                                    {!vipRewardStatus.eligible && (
-                                        <p className="text-xs text-center text-muted-foreground">
-                                            VIP rewards will be available when distributed by Admin.
-                                        </p>
-                                    )}
-                                </>
-                            )}
-
-                            {(userData?.total_referrals_count || 0) < 100 && (
-                                <div className="text-center p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg border border-purple-200">
-                                    <p className="text-sm font-medium text-purple-800">
-                                        🎯 Refer {100 - (userData?.total_referrals_count || 0)} more users to join the VIP pool!
-                                    </p>
-                                    <p className="text-xs text-purple-600 mt-1">
-                                        Both direct and indirect referrals (2 levels) count towards your total.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                </div>
-
-                {/* 4. Active Staking List */}
-                <Card className="p-6">
+                <Card className="p-6 mb-8">
                     <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
                         <LockIcon className="h-5 w-5 text-indigo-500" />
                         My Active Stakes
@@ -791,7 +532,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                         const endDate = new Date(stake.end_time);
                                         const now = new Date();
                                         const isUnlocked = now >= endDate;
-                                        
                                         return (
                                             <TableRow key={i}>
                                                 <TableCell className="font-medium font-mono text-base">${stake.amount}</TableCell>
@@ -803,7 +543,6 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                                 <TableCell className="text-muted-foreground">{new Date(stake.start_time).toLocaleDateString()}</TableCell>
                                                 <TableCell className={isUnlocked ? "text-green-600 font-medium" : "text-orange-600"}>
                                                     {endDate.toLocaleDateString()}
-                                                    {!isUnlocked && <span className="text-xs ml-1 text-muted-foreground">({Math.ceil((endDate - now)/(1000*60*60*24))}d left)</span>}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     {stake.status === 'withdrawn' ? (
@@ -815,11 +554,7 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                                             disabled={!isUnlocked}
                                                             onClick={() => handleWithdraw(stake)}
                                                         >
-                                                            {isUnlocked ? (
-                                                                <><Unlock className="mr-1 h-3 w-3" /> Withdraw</>
-                                                            ) : (
-                                                                <><LockIcon className="mr-1 h-3 w-3" /> Locked</>
-                                                            )}
+                                                            {isUnlocked ? "Withdraw" : "Locked"}
                                                         </Button>
                                                     )}
                                                 </TableCell>
@@ -829,7 +564,7 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                                 ) : (
                                     <TableRow>
                                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                            No active stakes found. Start staking above!
+                                            No active stakes found.
                                         </TableCell>
                                     </TableRow>
                                 )}
@@ -837,9 +572,136 @@ const { withdraw, claim, claimVip, refetchLocks } = useStaking();
                         </Table>
                     </div>
                 </Card>
+                
+                <div className="grid lg:grid-cols-2 gap-6 mb-8">
+                     <Card className="p-6 space-y-6 border-l-4 border-l-primary">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-semibold flex items-center gap-2">
+                                    <Coins className="h-5 w-5 text-yellow-500" />
+                                    Reward Pool Status
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-1">Check eligibility and claim rewards</p>
+                            </div>
+                            <Badge variant={rewardStatus.eligible ? "default" : "secondary"}>
+                                {rewardStatus.eligible ? "Available" : "Not Eligible"}
+                            </Badge>
+                        </div>
+                        <div className="space-y-4">
+                            {/* Referral Status */}
+                            <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                                <span className="text-sm font-medium">Referral Status</span>
+                                <div className="flex items-center gap-2">
+                                    {isReferralEligible ? (
+                                        <span className="text-green-600 flex items-center text-sm font-bold">
+                                            <CheckCircle2 className="h-4 w-4 mr-1" /> Eligible
+                                        </span>
+                                    ) : (
+                                        <span className="text-orange-600 text-sm font-bold">
+                                            {currentReferrals}/{referralTarget} Refs
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            {/* Requirement Info */}
+                            {!isReferralEligible && (
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-xs text-blue-800">
+                                        <strong>Need {Math.max(0, referralTarget - currentReferrals)} more referrals</strong><br/>
+                                        {totalStaked >= 100 ? "$100+ package: 5 referrals required" : "$50-99 package: 10 referrals required"}
+                                    </p>
+                                </div>
+                            )}
 
-                {/* 5. Transaction History */}
-                {/* ... (Existing transaction table can be merged or kept separate, kept separate for now) */}
+                            <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                                <span className="text-sm font-medium">Claimable</span>
+                                <span className="text-xl font-bold">{(rewardStatus.amount / 1e18).toFixed(4)} TOKENS</span>
+                            </div>
+                            
+                            <Button 
+                                className="w-full gradient-primary text-white" 
+                                size="lg"
+                                disabled={!rewardStatus.eligible || claiming || rewardStatus.claimed}
+                                onClick={handleClaimReward}
+                            >
+                                {claiming ? (
+                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Claiming...</>
+                                ) : rewardStatus.claimed ? "Claimed ✓" : "Claim Reward"}
+                            </Button>
+                        </div>
+                    </Card>
+                    
+                    <Card className="p-6 space-y-6 border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/50 to-pink-50/50">
+                         <div className="flex justify-between items-start">
+                             <div>
+                                 <h3 className="text-xl font-semibold flex items-center gap-2">
+                                    <Crown className="h-5 w-5 text-purple-600" />
+                                    VIP Reward Pool
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-1">100+ total referrals required</p>
+                             </div>
+                            <Badge variant={(userData?.total_referrals_count || 0) >= 100 ? "default" : "secondary"} className={(userData?.total_referrals_count || 0) >= 100 ? "bg-purple-600" : ""}>
+                                {(userData?.total_referrals_count || 0) >= 100 ? "VIP ✨" : "Not Eligible"}
+                            </Badge>
+                        </div>
+                        <div className="space-y-4">
+                            {/* VIP Progress */}
+                            <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
+                                <span className="text-sm font-medium">Total Referrals</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-bold">{userData?.total_referrals_count || 0}</span>
+                                    <span className="text-sm text-muted-foreground">/ 100</span>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <p className="text-xs text-blue-700 font-medium">Direct</p>
+                                    <p className="text-lg font-bold text-blue-900">{userData?.direct_referrals_count || 0}</p>
+                                </div>
+                                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                    <p className="text-xs text-purple-700 font-medium">Indirect</p>
+                                    <p className="text-lg font-bold text-purple-900">{userData?.indirect_referrals_count || 0}</p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
+                                <span className="text-sm font-medium">Claimable VIP Reward</span>
+                                <span className="text-xl font-bold text-purple-600">
+                                    {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e18).toFixed(4) : "0.00"} TOKENS
+                                </span>
+                            </div>
+
+                            <Button 
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700" 
+                                size="lg"
+                                disabled={!vipRewardStatus.eligible || claimingVip || vipRewardStatus.claimed}
+                                onClick={handleClaimVipReward}
+                            >
+                                {claimingVip ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Claiming...
+                                    </>
+                                ) : vipRewardStatus.claimed ? (
+                                    "Claimed ✓"
+                                ) : (
+                                    <>
+                                        <Crown className="mr-2 h-4 w-4" />
+                                        Claim VIP Reward 👑
+                                    </>
+                                )}
+                            </Button>
+                            {!vipRewardStatus.eligible && (
+                                <p className="text-xs text-center text-muted-foreground">
+                                    VIP rewards available for users with 100+ referrals.
+                                </p>
+                            )}
+                        </div>
+                    </Card>
+                </div>
+
             </>
           )}
         </div>

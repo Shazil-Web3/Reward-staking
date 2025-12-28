@@ -5,6 +5,7 @@ import DashboardStats from '@/app/components/admin/DashboardStats';
 import UserTable from '@/app/components/admin/UserTable';
 import PoolManager from '@/app/components/admin/PoolManager';
 import VIPPoolManager from '@/app/components/admin/VIPPoolManager';
+import DepositManager from '@/app/components/admin/DepositManager';
 import { LayoutDashboard } from 'lucide-react';
 
 export default function AdminPage() {
@@ -36,17 +37,23 @@ export default function AdminPage() {
 
           {/* Main Content - Vertical Stack */}
           <div className="space-y-8">
-            {/* Pool Manager - Top Section */}
+            
+            {/* 1. Deposit Manager (High Priority) */}
+            <div className="w-full">
+                <DepositManager />
+            </div>
+
+            {/* 2. Pool Manager */}
             <div className="w-full">
               <PoolManager />
             </div>
 
-            {/* VIP Pool Manager - Middle Section */}
+            {/* 3. VIP Pool Manager */}
             <div className="w-full">
               <VIPPoolManager />
             </div>
 
-            {/* User Table - Bottom Section */}
+            {/* 4. User Table */}
             <div className="w-full">
               <UserTable />
             </div>

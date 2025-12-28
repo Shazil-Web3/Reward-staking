@@ -9,7 +9,7 @@ import {
     usePublicClient,
     useBalance
 } from 'wagmi';
-import { parseUnits, formatUnits, erc20Abi } from 'viem';
+import { parseUnits, formatUnits, erc20Abi, keccak256, toBytes } from 'viem';
 import StakingArtifact from './staking.json';
 
 const StakingContext = createContext();
@@ -22,21 +22,21 @@ export const useStaking = () => {
     return context;
 };
 
-// Contract Address from env
-const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
+// Contract Address from env - NEW CONTRACT!
+const STAKING_CONTRACT_ADDRESS = "0xFEE07f54Bcff1CC6a96ce778434F0cC60D0010F7";
 
-// Validation: Warn if contract address is missing
+// Token Addresses
+const CCT_TOKEN_ADDRESS = "0xB493dfB1449134586E59dD17425aC72ffb19Bf82";
+const USDT_TOKEN_ADDRESS = "0x8bD91CC288b76591F60E370CA6ffdfeFFB2b1e93";
+
+// Validation
 if (!STAKING_CONTRACT_ADDRESS) {
-    console.error('❌ CRITICAL: NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS is missing in .env.local');
-    console.error('   Add your deployed contract address to frontend/.env.local');
-    console.error('   Example: NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS=0x1234...');
+    console.error('❌ CRITICAL: Staking contract address is missing');
 }
 
 export const StakingProvider = ({ children }) => {
     const { address, isConnected } = useAccount();
     const publicClient = usePublicClient();
-    const [usdtAddress, setUsdtAddress] = useState(null);
-    const [yourTokenAddress, setYourTokenAddress] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // --- Write Hooks ---
@@ -48,66 +48,61 @@ export const StakingProvider = ({ children }) => {
         abi: StakingArtifact.abi,
     };
 
-    // 1. Get Token Addresses (USDT & YourToken)
-    const { data: fetchedUsdtAddress } = useReadContract({
+    // 1. Get CCT Token Address from contract
+    const { data: cctAddress } = useReadContract({
         ...contractConfig,
-        functionName: 'usdt',
+        functionName: 'cctToken',
         query: {
             enabled: !!STAKING_CONTRACT_ADDRESS,
         },
     });
 
-    const { data: fetchedYourTokenAddress } = useReadContract({
+    // 2. Get Treasury Address
+    const { data: treasuryAddress } = useReadContract({
         ...contractConfig,
-        functionName: 'yourToken',
+        functionName: 'treasury',
         query: {
             enabled: !!STAKING_CONTRACT_ADDRESS,
         },
     });
 
-    useEffect(() => {
-        // Priority: Contract Read -> Env Var -> Hardcoded Fallback
-        const envUsdt = "0x8bD91CC288b76591F60E370CA6ffdfeFFB2b1e93";
+    // 3. Get Min Deposit Amount
+    const { data: minDeposit } = useReadContract({
+        ...contractConfig,
+        functionName: 'minDepositAmount',
+        query: {
+            enabled: !!STAKING_CONTRACT_ADDRESS,
+        },
+    });
 
-        if (fetchedUsdtAddress && fetchedUsdtAddress !== '0x0000000000000000000000000000000000000000') {
-            setUsdtAddress(fetchedUsdtAddress);
-        } else {
-            setUsdtAddress(envUsdt);
-        }
-
-        if (fetchedYourTokenAddress && fetchedYourTokenAddress !== '0x0000000000000000000000000000000000000000') {
-            setYourTokenAddress(fetchedYourTokenAddress);
-        }
-    }, [fetchedUsdtAddress, fetchedYourTokenAddress]);
-
-    // 2. Fetch User Locks
+    // 4. Fetch User Stakes
     const {
-        data: locks,
-        refetch: refetchLocks,
-        isLoading: isLocksLoading
+        data: stakes,
+        refetch: refetchStakes,
+        isLoading: isStakesLoading
     } = useReadContract({
         ...contractConfig,
-        functionName: 'getLocks',
+        functionName: 'getUserStakes',
         args: [address],
         query: {
             enabled: !!address,
         },
     });
 
-    // 3. Fetch Balances
-    const { data: usdtBalance, refetch: refetchUsdtBalance } = useBalance({
+    // 5. Fetch Balances
+    const { data: cctBalance, refetch: refetchCCTBalance } = useBalance({
         address: address,
-        token: usdtAddress,
+        token: CCT_TOKEN_ADDRESS,
         query: {
-            enabled: !!address && !!usdtAddress,
+            enabled: !!address,
         }
     });
 
-    const { data: tokenBalance, refetch: refetchTokenBalance } = useBalance({
+    const { data: usdtBalance, refetch: refetchUSDTBalance } = useBalance({
         address: address,
-        token: yourTokenAddress,
+        token: USDT_TOKEN_ADDRESS,
         query: {
-            enabled: !!address && !!yourTokenAddress,
+            enabled: !!address,
         }
     });
 
@@ -122,9 +117,9 @@ export const StakingProvider = ({ children }) => {
             console.log(`${description} confirmed!`, receipt);
 
             // Refresh data
-            refetchLocks();
-            refetchUsdtBalance();
-            refetchTokenBalance();
+            refetchStakes();
+            refetchCCTBalance();
+            refetchUSDTBalance();
 
             return receipt;
         } catch (error) {
@@ -136,70 +131,72 @@ export const StakingProvider = ({ children }) => {
     };
 
     /**
-     * Stake USDT to lock tokens.
-     * Flow: Approve USDT -> BuyAndLock
-     * @param {string} amountUSDT - Amount in readable format (e.g. "100")
-     * @param {number} durationSeconds - Lock duration in seconds
-     * @param {number} packageId - Package ID (0=Starter, 1=Pro, 2=Elite, 3=Custom)
-     * @param {string} referrerAddress - Referrer address (optional)
+     * Deposit CCT tokens with lock duration
+     * @param {string} amountCCT - Amount in readable format (e.g. "100")
+     * @param {number} lockDurationYears - Lock duration in years (1, 2, or 3)
+     * @param {string} referralCode - Referral code (optional, empty string if none)
      */
-    const stake = useCallback(async (amountUSDT, durationSeconds, packageId, referrerAddress = "0x0000000000000000000000000000000000000000") => {
-        if (!address || !usdtAddress) throw new Error("Wallet not connected or USDT address missing");
+    const deposit = useCallback(async (amountCCT, lockDurationYears, referralCode = "") => {
+        if (!address) throw new Error("Wallet not connected");
 
         try {
             setIsLoading(true);
-            const amountUnsafe = parseUnits(amountUSDT, 6); // USDT has 6 decimals on BSC
+            const amount = parseUnits(amountCCT, 18); // CCT has 18 decimals
 
-            // 1. Approve USDT
-            console.log("Approving USDT...");
+            // Convert years to seconds
+            const lockDurationSeconds = lockDurationYears * 365 * 24 * 60 * 60;
+
+            // Generate unique order ID
+            const timestamp = Math.floor(Date.now() / 1000);
+            const orderId = keccak256(toBytes(`${address}-${timestamp}-${Math.random()}`));
+
+            // 1. Approve CCT
+            console.log("Approving CCT...");
             const approvalHash = await writeContract({
-                address: usdtAddress,
+                address: CCT_TOKEN_ADDRESS,
                 abi: erc20Abi,
                 functionName: 'approve',
-                args: [STAKING_CONTRACT_ADDRESS, amountUnsafe],
+                args: [STAKING_CONTRACT_ADDRESS, amount],
             });
-            await handleTransaction(approvalHash, "USDT Approval");
+            await handleTransaction(approvalHash, "CCT Approval");
 
-            // 2. Buy and Lock
-            console.log("Staking...");
-            // Calculate minTokensOut (slippage). For now 0 (risky in prod, but ok for basic impl) or calculate based on price.
-            // Setting 0 for simplicity as per request to "make it easier". 
-            // In a real app, you'd fetch amountsOut from router.
-            const minTokensOut = 0n;
-            const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 mins
-
-            const stakeHash = await writeContract({
+            // 2. Deposit with lock duration
+            console.log("Depositing CCT with", lockDurationYears, "year lock...");
+            const depositHash = await writeContract({
                 ...contractConfig,
-                functionName: 'buyAndLock',
-                args: [
-                    amountUnsafe,
-                    minTokensOut,
-                    BigInt(durationSeconds),
-                    packageId,
-                    referrerAddress,
-                    deadline
-                ],
+                functionName: 'deposit',
+                args: [orderId, amount, BigInt(lockDurationSeconds), referralCode],
             });
 
-            return await handleTransaction(stakeHash, "Stake");
+            const receipt = await handleTransaction(depositHash, "Deposit & Stake");
+
+            // Return order details for tracking
+            return {
+                orderId,
+                amount: amountCCT,
+                lockDurationYears,
+                referralCode,
+                txHash: depositHash,
+                receipt
+            };
 
         } catch (error) {
-            console.error("Staking error:", error);
+            console.error("Deposit error:", error);
             setIsLoading(false);
             throw error;
         }
-    }, [address, usdtAddress, writeContract, publicClient, contractConfig]);
+    }, [address, writeContract, publicClient, contractConfig]);
 
     /**
-     * Withdraw locked tokens after lock period expires.
-     * @param {number} lockId - Index of the lock in user's lock array
+     * Withdraw unlocked stake by index
+     * @param {number} index - Index of the stake in user's stake array
      */
-    const withdraw = useCallback(async (lockId) => {
+    const withdraw = useCallback(async (index) => {
         try {
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'withdraw',
-                args: [BigInt(lockId)],
+                args: [BigInt(index)],
             });
             return await handleTransaction(hash, "Withdraw");
         } catch (error) {
@@ -209,157 +206,150 @@ export const StakingProvider = ({ children }) => {
     }, [writeContract, contractConfig, publicClient]);
 
     /**
-     * Check if user has claimed a specific epoch (reads from contract)
-     * @param {number} epochId - Epoch ID
-     * @param {string} userAddress - User address to check
-     * @returns {Promise<boolean>} - True if claimed, false otherwise
+     * Admin function: Add stake for a user
+     * @param {string} userAddress - User address
+     * @param {string} amount - Amount in CCT
+     * @param {number} lockDurationSeconds - Lock duration in seconds
      */
-    const checkClaimStatus = useCallback(async (epochId, userAddress) => {
-        if (!publicClient || !userAddress) return false;
-
+    const addStake = useCallback(async (userAddress, amount, lockDurationSeconds) => {
         try {
-            const hasClaimed = await publicClient.readContract({
+            const amountBN = parseUnits(amount, 18);
+            const hash = await writeContract({
                 ...contractConfig,
-                functionName: 'claimed',
-                args: [BigInt(epochId), userAddress],
+                functionName: 'addStake',
+                args: [userAddress, amountBN, BigInt(lockDurationSeconds)],
             });
-            return hasClaimed;
+            return await handleTransaction(hash, "Add Stake");
         } catch (error) {
-            console.error('Error checking claim status from contract:', error);
-            return false;
+            console.error("Add stake error:", error);
+            throw error;
         }
-    }, [publicClient, contractConfig]);
+    }, [writeContract, contractConfig, publicClient]);
 
     /**
-     * Claim Rewards for a specific epoch
-     * @param {number} epochId - Epoch ID
-     * @param {string} amount - Amount to claim
-     * @param {string[]} proof - Merkle Proof
+     * Admin function: Batch add stakes
+     * @param {Array} users - Array of user addresses
+     * @param {Array} amounts - Array of amounts (in CCT readable format)
+     * @param {Array} lockDurations - Array of lock durations in seconds
      */
-    const claim = useCallback(async (epochId, amount, proof) => {
+    const batchAddStakes = useCallback(async (users, amounts, lockDurations) => {
         try {
-            console.log('🎁 Claiming reward with:', {
-                epochId,
-                amount,
-                proof,
-                proofLength: proof?.length || 0
-            });
-
-            const proofArray = proof || [];
+            const amountsBN = amounts.map(amt => parseUnits(amt, 18));
+            const durationsBN = lockDurations.map(d => BigInt(d));
 
             const hash = await writeContract({
                 ...contractConfig,
-                functionName: 'claim',
-                args: [BigInt(epochId), BigInt(amount), proofArray],
-                gas: 500000n,
+                functionName: 'batchAddStakes',
+                args: [users, amountsBN, durationsBN],
             });
-
-            const receipt = await handleTransaction(hash, "Claim Reward");
-
-            // Dispatch custom event for immediate UI refresh
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('reward-claimed', {
-                    detail: { epochId, amount }
-                }));
-            }
-
-            return receipt;
+            return await handleTransaction(hash, "Batch Add Stakes");
         } catch (error) {
-            console.error("Claim error:", error);
+            console.error("Batch add stakes error:", error);
             throw error;
         }
-    }, [writeContract, contractConfig, publicClient, handleTransaction]);
+    }, [writeContract, contractConfig, publicClient]);
 
     /**
-     * Claim VIP Rewards for a specific epoch
+     * Claim reward with Merkle proof
      * @param {number} epochId - Epoch ID
-     * @param {string} amount - Amount to claim
-     * @param {string[]} proof - Merkle Proof
+     * @param {string|number} amount - Amount in tokens (will be converted to Wei)
+     * @param {Array} proof - Merkle proof as bytes32[]
      */
-    const claimVip = useCallback(async (epochId, amount, proof) => {
+    const claimReward = useCallback(async (epochId, amount, proof) => {
         try {
-            console.log('👑 Claiming VIP reward with:', {
-                epochId,
-                amount,
-                proof,
-                proofLength: proof?.length || 0
-            });
-
-            const proofArray = proof || [];
-
+            const amountBN = parseUnits(amount.toString(), 18);
             const hash = await writeContract({
                 ...contractConfig,
-                functionName: 'claimVip',
-                args: [BigInt(epochId), BigInt(amount), proofArray],
-                gas: 500000n,
+                functionName: 'claimReward',
+                args: [BigInt(epochId), BigInt(amount), proof],
             });
-
-            const receipt = await handleTransaction(hash, "Claim VIP Reward");
-
-            // Dispatch custom event for immediate UI refresh
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('vip-reward-claimed', {
-                    detail: { epochId, amount }
-                }));
-            }
-
-            return receipt;
+            return await handleTransaction(hash, "Claim Reward");
         } catch (error) {
-            console.error("VIP claim error:", error);
+            console.error("Claim reward error:", error);
             throw error;
         }
-    }, [writeContract, contractConfig, publicClient, handleTransaction]);
+    }, [writeContract, contractConfig, publicClient]);
 
     /**
-     * Fund VIP Reward Pool
-     * @param {string} tokenAddress - Token address to fund with
-     * @param {string} amount - Amount in token units (wei)
+     * Claim VIP reward with Merkle proof
+     * @param {number} epochId - Epoch ID
+     * @param {string|number} amount - Amount in tokens (will be converted to Wei)
+     * @param {Array} proof - Merkle proof as bytes32[]
      */
-    const fundVipRewardTokens = useCallback(async (tokenAddress, amount) => {
+    const claimVIPReward = useCallback(async (epochId, amount, proof) => {
         try {
-            console.log('💎 Funding VIP Pool:', { tokenAddress, amount });
-
-            // IMPORTANT: Need to approve token first
-            console.log('Approving token...');
-            const approvalHash = await writeContract({
-                address: tokenAddress,
-                abi: erc20Abi,
-                functionName: 'approve',
-                args: [STAKING_CONTRACT_ADDRESS, BigInt(amount)],
-            });
-            await handleTransaction(approvalHash, "Token Approval");
-
-            // Then fund VIP pool
+            const amountBN = parseUnits(amount.toString(), 18);
             const hash = await writeContract({
                 ...contractConfig,
-                functionName: 'fundVipRewardTokens',
-                args: [tokenAddress, BigInt(amount)],
+                functionName: 'claimVIPReward',
+                args: [BigInt(epochId), BigInt(amount), proof],
             });
-
-            return await handleTransaction(hash, "Fund VIP Pool");
+            return await handleTransaction(hash, "Claim VIP Reward");
         } catch (error) {
-            console.error("VIP funding error:", error);
+            console.error("Claim VIP reward error:", error);
             throw error;
         }
-    }, [writeContract, contractConfig, publicClient, handleTransaction]);
+    }, [writeContract, contractConfig, publicClient]);
+
+    /**
+     * Admin function: Publish reward Merkle root
+     * @param {string} merkleRoot - Merkle root as bytes32
+     */
+    const publishRewardRoot = useCallback(async (merkleRoot) => {
+        try {
+            const hash = await writeContract({
+                ...contractConfig,
+                functionName: 'publishRewardRoot',
+                args: [merkleRoot],
+            });
+            return await handleTransaction(hash, "Publish Reward Root");
+        } catch (error) {
+            console.error("Publish reward root error:", error);
+            throw error;
+        }
+    }, [writeContract, contractConfig, publicClient]);
+
+    /**
+     * Admin function: Publish VIP Merkle root
+     * @param {string} merkleRoot - Merkle root as bytes32
+     */
+    const publishVIPRoot = useCallback(async (merkleRoot) => {
+        try {
+            const hash = await writeContract({
+                ...contractConfig,
+                functionName: 'publishVIPRoot',
+                args: [merkleRoot],
+            });
+            return await handleTransaction(hash, "Publish VIP Root");
+        } catch (error) {
+            console.error("Publish VIP root error:", error);
+            throw error;
+        }
+    }, [writeContract, contractConfig, publicClient]);
 
     const value = {
         // Data
         address,
         isConnected,
-        locks,
+        stakes,
+        cctBalance,
         usdtBalance,
-        tokenBalance,
-        isLoading: isLoading || isLocksLoading,
+        minDeposit,
+        treasuryAddress,
+        cctAddress: cctAddress || CCT_TOKEN_ADDRESS,
+        usdtAddress: USDT_TOKEN_ADDRESS,
+        isLoading: isLoading || isStakesLoading,
 
         // Actions
-        stake,
+        deposit,
         withdraw,
-        claim,
-        claimVip,
-        checkClaimStatus,
-        fundVipRewardTokens,
-        refetchLocks,
+        addStake,
+        batchAddStakes,
+        claimReward,
+        claimVIPReward,
+        publishRewardRoot,
+        publishVIPRoot,
+        refetchStakes,
     };
 
     return (

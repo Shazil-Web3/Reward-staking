@@ -123,47 +123,26 @@ const PoolManager = () => {
                 throw new Error(errorMessage);
             }
 
-            setStatus(`Merkle Root generated. Submitting to blockchain...`);
+            setStatus(`Merkle Root generated. Publishing to blockchain...`);
 
-            console.log('📤 Submitting to blockchain:', {
+            console.log('📤 Publishing Merkle root to contract:', {
                 merkleRoot: result.merkleRoot,
-                rewardToken: rewardTokenAddress,
                 amount: amountInWei
             });
 
-            // Read current epoch count from blockchain BEFORE creating new epoch
-            const currentEpochCount = await publicClient.readContract({
-                address: STAKING_CONTRACT_ADDRESS,
-                abi: StakingArtifact.abi,
-                functionName: 'epochsCount'
-            });
-
-            const blockchainEpochId = Number(currentEpochCount);
-            console.log('📊 Blockchain epoch count:', blockchainEpochId, '(next epoch will be:', blockchainEpochId, ')');
-
-            // 2. Blockchain Submission
+            // 2. Publish Merkle root to contract
             const txHash = await writeContractAsync({
                 address: STAKING_CONTRACT_ADDRESS,
                 abi: StakingArtifact.abi,
-                functionName: 'createRewardEpoch',
-                args: [result.merkleRoot, rewardTokenAddress, amountInWei]
+                functionName: 'publishRewardRoot',
+                args: [result.merkleRoot]
             });
 
             console.log('✅ Transaction hash:', txHash);
-            setStatus(`Distribution submitted! Hash: ${txHash.slice(0, 10)}...`);
+            setStatus(`Reward root published! Hash: ${txHash.slice(0, 10)}...`);
             await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-            // Update the database with the correct blockchain epoch ID
-            await fetch(`${BACKEND_API_URL}/api/admin/update-epoch-id`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    databaseEpochId: result.epochId,
-                    blockchainEpochId: blockchainEpochId
-                })
-            });
-
-            console.log('✅ Transaction confirmed! Blockchain epoch ID:', blockchainEpochId);
+            console.log('✅ Transaction confirmed!');
             setStatus('Rewards distributed successfully! Users can now claim.');
             setDistributeAmount('');
             refreshData();

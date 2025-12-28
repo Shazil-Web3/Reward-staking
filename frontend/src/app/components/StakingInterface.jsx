@@ -13,7 +13,7 @@ import { usePancakePrice } from '@/hooks/usePancakePrice';
 const StakingInterface = () => {
   const searchParams = useSearchParams();
   const { address } = useAccount();
-  const { stake, isLoading } = useStaking();
+  const { deposit, isLoading, cctBalance, minDeposit } = useStaking();
   const [stakingAmount, setStakingAmount] = useState('');
   const [selectedPackage, setSelectedPackage] = useState('custom');
   const [selectedYears, setSelectedYears] = useState(1);
@@ -37,11 +37,11 @@ const StakingInterface = () => {
     }
   }, [searchParams]);
 
+  // Package options - UI-only suggestions (not enforced by contract)
   const packageOptions = [
-    { value: 'starter', label: 'Starter Package ($50)', amount: 50, id: 0 },
-    { value: 'pro', label: 'Pro Package ($100)', amount: 100, id: 1 },
-    { value: 'elite', label: 'Elite Package ($1000)', amount: 1000, id: 2 },
-    { value: 'custom', label: 'Custom Amount', amount: null, id: 3 },
+    { value: 'starter', label: '$50 Package', amount: 50 },
+    { value: 'pro', label: '$100 Package', amount: 100 },
+    { value: 'custom', label: 'Custom Amount', amount: null },
   ];
 
   const handlePackageChange = (e) => {
@@ -126,7 +126,7 @@ const StakingInterface = () => {
       }
     }
 
-    // Close popup and proceed with stake
+    // Close popup and proceed with  deposit
     setShowReferralPopup(false);
 
     const amount = parseFloat(stakingAmount);
@@ -135,30 +135,56 @@ const StakingInterface = () => {
       setTxStatus('Preparing transaction...');
       setError('');
 
-      const packageData = packageOptions.find(pkg => pkg.value === selectedPackage);
-      const packageId = packageData.id;
-      // PRODUCTION: 1 Year = 365 days
-      const durationSeconds = selectedYears * 365 * 24 * 60 * 60;
+      // Calculate CCT amount from USDT amount
+      // For now, using the live price from PancakeSwap
+      if (!cctAmount || priceLoading || priceError) {
+        setError('Unable to fetch CCT price. Please try again.');
+        return;
+      }
 
-      setTxStatus('Approving USDT...');
-      const receipt = await stake(
-        amount.toString(),
-        durationSeconds,
-        packageId,
-        finalReferrer
+      setTxStatus('Approving CCT tokens...');
+
+      // Call deposit with CCT amount, lock duration, and referral code
+      const referralCode = referralAddress.trim() || '';
+
+      const depositResult = await deposit(
+        cctAmount,        // CCT amount (already calculated from USDT)
+        selectedYears,    // Lock duration in years
+        referralCode      // Referral code or address
       );
 
-      setTxStatus('Success! Transaction confirmed. Referral tracked!');
+      setTxStatus(`Success! Staked ${cctAmount} CCT for ${selectedYears} year(s). TX: ${depositResult.txHash}`);
+
+      // Notify backend about the deposit for tracking
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/deposits/track`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: depositResult.orderId,
+            walletAddress: address,
+            amount: amount,
+            cctAmount: cctAmount,
+            lockYears: selectedYears,
+            referralCode: referralCode,
+            txHash: depositResult.txHash
+          })
+        });
+      } catch (backendError) {
+        console.error('Backend tracking error:', backendError);
+        // Don't fail the transaction if backend fails
+      }
+
       setTimeout(() => {
         setStakingAmount('');
         setTxStatus('');
         setSelectedPackage('custom');
+        setSelectedYears(1);
         setShowCustomInput(true);
-        // Keep referral address/code for future stakes
-      }, 3000);
+      }, 5000);
 
     } catch (err) {
-      console.error('Staking error:', err);
+      console.error('Deposit error:', err);
       setError(err.message || 'Transaction failed. Please try again.');
       setTxStatus('');
     }

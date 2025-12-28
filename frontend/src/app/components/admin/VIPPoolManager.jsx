@@ -95,43 +95,23 @@ const VIPPoolManager = () => {
                 throw new Error(result.error || 'VIP epoch generation failed');
             }
 
-            setStatus(`VIP Merkle Root generated. Submitting to blockchain...`);
+            setStatus(`VIP Merkle Root generated. Publishing to blockchain...`);
 
-            console.log('📤 Submitting VIP epoch to blockchain:', {
+            console.log('📤 Publishing VIP Merkle root to contract:', {
                 merkleRoot: result.merkleRoot,
-                rewardToken: rewardTokenAddress,
                 amount: amountInWei
             });
 
-            // Read current VIP epoch count
-            const currentVipEpochCount = await publicClient.readContract({
-                address: STAKING_CONTRACT_ADDRESS,
-                abi: StakingArtifact.abi,
-                functionName: 'vipEpochsCount'
-            });
-
-            const blockchainEpochId = Number(currentVipEpochCount);
-
-            // Create VIP epoch on-chain
+            // 2. Publish VIP Merkle root to contract
             const txHash = await writeContractAsync({
                 address: STAKING_CONTRACT_ADDRESS,
                 abi: StakingArtifact.abi,
-                functionName: 'createVipRewardEpoch',
-                args: [result.merkleRoot, rewardTokenAddress, amountInWei]
+                functionName: 'publishVIPRoot',
+                args: [result.merkleRoot]
             });
 
-            setStatus(`VIP distribution submitted! Hash: ${txHash.slice(0, 10)}...`);
+            setStatus(`VIP root published! Hash: ${txHash.slice(0, 10)}...`);
             await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-            // Update database with blockchain epoch ID
-            await fetch(`${BACKEND_API_URL}/api/admin/update-vip-epoch-id`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    databaseEpochId: result.epochId,
-                    blockchainEpochId: blockchainEpochId
-                })
-            });
 
             setStatus('VIP Rewards distributed successfully! Users can now claim.');
             setDistributeAmount('');
