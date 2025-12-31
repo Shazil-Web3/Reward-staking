@@ -142,18 +142,19 @@ const StakingInterface = () => {
         return;
       }
 
-      setTxStatus('Approving CCT tokens...');
+      setTxStatus('Approving USDT tokens...');
 
-      // Call deposit with CCT amount, lock duration, and referral code
+      // Call deposit with USD amount, CCT amount, lock duration, and referral code
       const referralCode = referralAddress.trim() || '';
 
       const depositResult = await deposit(
-        cctAmount,        // CCT amount (already calculated from USDT)
+        stakingAmount,    // USD amount (user is depositing USDT)
+        cctAmount,        // CCT amount (stake amount they'll get later)
         selectedYears,    // Lock duration in years
         referralCode      // Referral code or address
       );
 
-      setTxStatus(`Success! Staked ${cctAmount} CCT for ${selectedYears} year(s). TX: ${depositResult.txHash}`);
+      setTxStatus(`Success! Deposited $${stakingAmount} USDT for ${cctAmount} CCT stake (${selectedYears} year lock). TX: ${depositResult.txHash}`);
 
       // Notify backend about the deposit for tracking
       try {

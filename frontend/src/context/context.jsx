@@ -23,11 +23,11 @@ export const useStaking = () => {
 };
 
 // Contract Address from env - NEW CONTRACT!
-const STAKING_CONTRACT_ADDRESS = "0xFEE07f54Bcff1CC6a96ce778434F0cC60D0010F7";
+const STAKING_CONTRACT_ADDRESS = "0x0e7FeC1c8873940216F64317d2cB58AE1267D45b";
 
 // Token Addresses
-const CCT_TOKEN_ADDRESS = "0xB493dfB1449134586E59dD17425aC72ffb19Bf82";
-const USDT_TOKEN_ADDRESS = "0x8bD91CC288b76591F60E370CA6ffdfeFFB2b1e93";
+const CCT_TOKEN_ADDRESS = "0x4B4C80667cd1C40BFD2382126809C1890a08eBD4";
+const USDT_TOKEN_ADDRESS = "0x3033AeAE74de8B3a55a2b56412Bf952a5cAE1Bf1";
 
 // Validation
 if (!STAKING_CONTRACT_ADDRESS) {
@@ -75,6 +75,15 @@ export const StakingProvider = ({ children }) => {
         },
     });
 
+    // 3b. Verify Contract's USDT Address
+    const { data: contractUsdtAddress } = useReadContract({
+        ...contractConfig,
+        functionName: 'usdt',
+        query: {
+            enabled: !!STAKING_CONTRACT_ADDRESS,
+        },
+    });
+
     // 4. Fetch User Stakes
     const {
         data: stakes,
@@ -103,6 +112,16 @@ export const StakingProvider = ({ children }) => {
         token: USDT_TOKEN_ADDRESS,
         query: {
             enabled: !!address,
+        }
+    });
+
+    // 6. Fetch USDT Decimals
+    const { data: usdtDecimals } = useReadContract({
+        address: USDT_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'decimals',
+        query: {
+            enabled: !!USDT_TOKEN_ADDRESS,
         }
     });
 
@@ -136,12 +155,65 @@ export const StakingProvider = ({ children }) => {
      * @param {number} lockDurationYears - Lock duration in years (1, 2, or 3)
      * @param {string} referralCode - Referral code (optional, empty string if none)
      */
-    const deposit = useCallback(async (amountCCT, lockDurationYears, referralCode = "") => {
+    /**
+     * Deposit CCT tokens with lock duration
+     * @param {string} amountCCT - Amount in readable format (e.g. "100")
+     * @param {number} lockDurationYears - Lock duration in years (1, 2, or 3)
+     * @param {string} referralCode - Referral code (optional, empty string if none)
+     */
+    const deposit = useCallback(async (stakingAmountUSD, cctAmountConverted, lockDurationYears, referralCode = "") => {
         if (!address) throw new Error("Wallet not connected");
+        let step = "INIT";
 
         try {
             setIsLoading(true);
-            const amount = parseUnits(amountCCT, 18); // CCT has 18 decimals
+
+            console.log("🔍 DEBUG - Deposit Started. Inputs:", { stakingAmountUSD, cctAmountConverted, lockDurationYears });
+
+            // Use 6 decimals for USDT (Mock USDT on Sepolia uses 6, standard USDT uses 6)
+            // Defaulting to 18 caused massive overflow/revert.
+            const decimals = 6;
+            console.log(`Using USDT Decimals: ${decimals}`);
+
+            // Convert USD amount to USDT
+            const usdtAmount = parseUnits(stakingAmountUSD.toString(), decimals);
+
+            // --- VALIDATION CHECKS ---
+
+            // Check 1: Minimum Deposit
+            if (minDeposit) {
+                // minDeposit is BigInt.
+                if (usdtAmount < minDeposit) {
+                    const minReadable = formatUnits(minDeposit, decimals);
+                    throw new Error(`Deposit amount (${stakingAmountUSD}) is below minimum (${minReadable} USDT)`);
+                }
+            }
+
+            // Check 2: USDT Address Mismatch
+            if (contractUsdtAddress) {
+                if (contractUsdtAddress.toLowerCase() !== USDT_TOKEN_ADDRESS.toLowerCase()) {
+                    console.error("MISMATCH: Contract expects", contractUsdtAddress, "but using", USDT_TOKEN_ADDRESS);
+                    throw new Error("Critical Configuration Mismatch: Frontend USDT address does not match Staking Contract's USDT address. Please report this.");
+                }
+            }
+
+            // --- END CHECKS ---
+
+            console.log("🔍 DEBUG - Converted amounts:", {
+                usdtAmount: usdtAmount.toString(),
+                minDeposit: minDeposit ? minDeposit.toString() : "Loading..."
+            });
+
+            step = "PARSING_AMOUNTS";
+            // cctAmountConverted is a decimal string like "5000.0"
+            // First ensure it's a clean decimal number, then convert to Wei
+            const cctDecimal = parseFloat(cctAmountConverted);
+            if (isNaN(cctDecimal) || cctDecimal <= 0) {
+                throw new Error(`Invalid CCT amount: ${cctAmountConverted}`);
+            }
+            const cctAmount = parseUnits(cctDecimal.toString(), 18);
+
+            console.log("🔍 DEBUG - CCT Amount:", { cctAmount: cctAmount.toString() });
 
             // Convert years to seconds
             const lockDurationSeconds = lockDurationYears * 365 * 24 * 60 * 60;
@@ -150,30 +222,66 @@ export const StakingProvider = ({ children }) => {
             const timestamp = Math.floor(Date.now() / 1000);
             const orderId = keccak256(toBytes(`${address}-${timestamp}-${Math.random()}`));
 
-            // 1. Approve CCT
-            console.log("Approving CCT...");
+            // --- VALIDATION: Check Contract Configuration ---
+            // Verify that the Staking Contract is actually using the USDT token we think it is.
+            // If user deployed StakingHub with a different USDT address, transferFrom will fail.
+            try {
+                const contractUsdt = await publicClient.readContract({
+                    address: STAKING_CONTRACT_ADDRESS,
+                    abi: StakingArtifact.abi,
+                    functionName: 'usdt'
+                });
+
+                if (contractUsdt.toLowerCase() !== USDT_TOKEN_ADDRESS.toLowerCase()) {
+                    throw new Error(`CONFIGURATION MISMATCH: Contract expects USDT at ${contractUsdt}, but frontend using ${USDT_TOKEN_ADDRESS}. update context.jsx!`);
+                }
+                console.log("✅ Contract Config Verified: USDT Setup is correct.");
+            } catch (err) {
+                console.error("Config Check Failed:", err);
+                // Don't block if read fails (e.g. ABI issue), but warn
+            }
+
+            // 1. Approve USDT (user deposits USDT, not CCT!)
+            step = "APPROVE_USDT";
+            console.log(`[${step}] Approving USDT...`, stakingAmountUSD, "USD");
+
             const approvalHash = await writeContract({
-                address: CCT_TOKEN_ADDRESS,
+                address: USDT_TOKEN_ADDRESS,
                 abi: erc20Abi,
                 functionName: 'approve',
-                args: [STAKING_CONTRACT_ADDRESS, amount],
+                args: [STAKING_CONTRACT_ADDRESS, usdtAmount],
             });
-            await handleTransaction(approvalHash, "CCT Approval");
 
-            // 2. Deposit with lock duration
-            console.log("Depositing CCT with", lockDurationYears, "year lock...");
+            step = "WAIT_APPROVAL_RECEIPT";
+            console.log(`[${step}] Waiting for approval transaction...`, approvalHash);
+            await handleTransaction(approvalHash, "USDT Approval");
+
+            // 2. Deposit USDT to contract (USDT goes to treasury, CCT stake created)
+            step = "DEPOSIT_TRANSACTION";
+            console.log(`[${step}] Depositing`, stakingAmountUSD, "USDT for", cctAmountConverted, "CCT stake with", lockDurationYears, "year lock...");
+
             const depositHash = await writeContract({
                 ...contractConfig,
-                functionName: 'deposit',
-                args: [orderId, amount, BigInt(lockDurationSeconds), referralCode],
+                functionName: 'depositUSDT',
+                args: [
+                    orderId,                    // bytes32 orderId
+                    usdtAmount,                 // uint256 usdtAmount (USDT user is depositing)
+                    cctAmount,                  // uint256 cctAmount (CCT they'll get later)
+                    BigInt(lockDurationSeconds), // uint256 lockDurationSeconds
+                    referralCode                // string referralCode
+                ],
+                gas: 500000n, // Set reasonable gas limit for Sepolia
             });
 
+            step = "WAIT_DEPOSIT_RECEIPT";
+            console.log(`[${step}] Waiting for deposit transaction...`, depositHash);
             const receipt = await handleTransaction(depositHash, "Deposit & Stake");
 
             // Return order details for tracking
             return {
                 orderId,
-                amount: amountCCT,
+                amount: stakingAmountUSD,
+                cctAmount: cctAmountConverted,
                 lockDurationYears,
                 referralCode,
                 txHash: depositHash,
@@ -181,7 +289,14 @@ export const StakingProvider = ({ children }) => {
             };
 
         } catch (error) {
-            console.error("Deposit error:", error);
+            console.error(`Deposit error at step [${step}]:`, error);
+            console.error("Full Error Object:", JSON.stringify(error, (key, value) =>
+                typeof value === 'bigint' ? value.toString() : value // Handle BigInt serialization
+                , 2));
+
+            // Temporary alert for debugging on frontend
+            alert(`Transaction Failed at step: ${step}\n\nReason: ${error.details || error.shortMessage || error.message}`);
+
             setIsLoading(false);
             throw error;
         }

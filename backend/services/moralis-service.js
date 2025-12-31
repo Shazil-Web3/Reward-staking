@@ -4,17 +4,22 @@ const { ethers } = require('ethers');
 class MoralisService {
     constructor() {
         this.isInitialized = false;
-        this.depositContractAddress = process.env.DEPOSIT_CONTRACT_ADDRESS;
+        // Check multiple env vars to find the address
+        this.depositContractAddress = process.env.DEPOSIT_CONTRACT_ADDRESS || 
+                                      process.env.STAKING_CONTRACT_ADDRESS || 
+                                      process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
     }
 
     async initialize() {
         if (!this.isInitialized) {
             try {
+                console.log('📡 Initializing Moralis Service...');
                 await Moralis.start({
                     apiKey: process.env.MORALIS_API_KEY
                 });
                 this.isInitialized = true;
-                console.log('✅ Moralis Initialized');
+                console.log('✅ Moralis Initialized Successfully');
+                console.log('🔗 Monitoring Chain ID:', process.env.CHAIN_ID || "1 (Mainnet)");
             } catch (error) {
                 console.error('❌ Moralis Initialization Failed:', error.message);
                 // Don't kill process, allows retry
@@ -32,18 +37,34 @@ class MoralisService {
         if (!this.isInitialized) await this.initialize();
 
         try {
-            console.log(`🔍 Verifying TX: ${txHash}`);
+            console.log(`\n🔎 [Moralis] Verifying Transaction: ${txHash}`);
+            console.log(`📋 [Moralis] Expected Order ID: ${expectedOrderId}`);
 
-            // 1. Fetch Transaction
-            const chainId = process.env.CHAIN_ID === '56' ? '0x38' : '0x1'; // Default ETH
+            // 1. Fetch Transaction with Retry Logic (Handling Indexing Lag)
+            const chainId = process.env.CHAIN_ID === '56' ? '0x38' : '0xaa36a7'; // Default Seoplio/ETH
+            console.log(`🌐 [Moralis] Fetching from Chain: ${chainId}`);
             
-            const response = await Moralis.EvmApi.transaction.getTransaction({
-                chain: chainId,
-                transactionHash: txHash
-            });
+            let response = null;
+            let retries = 5;
+            
+            while (retries > 0) {
+                try {
+                    response = await Moralis.EvmApi.transaction.getTransaction({
+                        chain: chainId,
+                        transactionHash: txHash
+                    });
+                    if (response && response.raw) break; // Found it!
+                } catch (e) {
+                    // Ignore 404/not found errors during retry attempts
+                    console.log(`⏳ TX not indexed yet. Retrying in 2s... (${retries} left)`);
+                }
+                
+                retries--;
+                if (retries > 0) await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+            }
 
             if (!response || !response.raw) {
-                return { verified: false, error: 'Transaction not found via Moralis' };
+                return { verified: false, error: 'Transaction not found via Moralis after retries (Indexing lag?)' };
             }
 
             const tx = response.raw;
@@ -58,14 +79,13 @@ class MoralisService {
                 return { verified: false, error: 'Transaction sent to wrong contract' };
             }
 
-            // 4. Decode Input Data
-            // We look for the 'deposit' function call
-            // deposit(bytes32 orderId, uint256 amount, string referralCode)
+            // 5. Decode Input Data
+            // We look for 'deposit' or 'depositUSDT'
             
             let decodedParams = {};
             
             // Try Moralis decoding first
-            if (tx.decoded_call && tx.decoded_call.label === 'deposit') {
+            if (tx.decoded_call && (tx.decoded_call.label === 'deposit' || tx.decoded_call.label === 'depositUSDT')) {
                 tx.decoded_call.params.forEach(p => {
                     decodedParams[p.name] = p.value;
                 });
@@ -73,20 +93,26 @@ class MoralisService {
                 // Fallback to manual decoding using ethers
                 try {
                     const iface = new ethers.Interface([
-                        "function deposit(bytes32 orderId, uint256 amount, string referralCode)"
+                        "function deposit(bytes32 orderId, uint256 amount, string referralCode)",
+                        "function depositUSDT(bytes32 orderId, uint256 usdtAmount, uint256 cctAmount, uint256 lockDurationSeconds, string referralCode)"
                     ]);
                     const decoded = iface.parseTransaction({ data: tx.input });
-                    decodedParams = {
-                        orderId: decoded.args[0],
-                        amount: decoded.args[1].toString(),
-                        referralCode: decoded.args[2]
-                    };
+                    
+                    if (decoded) {
+                         // Normalize fields to what we expect
+                         decodedParams = {
+                            orderId: decoded.args[0],
+                            amount: decoded.name === 'depositUSDT' ? decoded.args[1].toString() : decoded.args[1].toString(), // usdtAmount is 2nd arg
+                            referralCode: decoded.name === 'depositUSDT' ? decoded.args[4] : decoded.args[2]
+                         };
+                    }
                 } catch (e) {
+                    console.error("Decoding Error details:", e);
                     return { verified: false, error: 'Could not decode transaction data' };
                 }
             }
 
-            // 5. Verify Order ID
+            // 6. Verify Order ID
             if (decodedParams.orderId !== expectedOrderId) {
                 return { verified: false, error: `Order ID mismatch. Expected ${expectedOrderId}, got ${decodedParams.orderId}` };
             }

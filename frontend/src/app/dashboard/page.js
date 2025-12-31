@@ -135,13 +135,7 @@ const Dashboard = () => {
         
         if (user) setUserData(user);
 
-        const { data: userStakes } = await supabase
-            .from('stakes')
-            .select('*')
-            .eq('user_address', address.toLowerCase())
-            .order('created_at', { ascending: false });
 
-        if (userStakes) setStakes(userStakes);
 
         const { data: userDeposits } = await supabase
           .from('deposits')
