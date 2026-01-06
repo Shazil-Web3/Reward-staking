@@ -5,6 +5,8 @@ const { createClient } = require('@supabase/supabase-js');
 const { ethers } = require('ethers');
 const moralisService = require('./services/moralis-service');
 const crypto = require('crypto');
+const { MerkleTree } = require('merkletreejs');
+const { keccak256, solidityPackedKeccak256 } = require('ethers');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -89,30 +91,33 @@ app.post('/api/deposits/track', async (req, res) => {
         console.log(`✅ Transaction Verified on Chain! Block: ${verification.blockNumber}`);
 
         // 1. Ensure User Exists in DB (to satisfy Foreign Key)
-        const { data: userCheck } = await supabase
+        let { data: userCheck } = await supabase
             .from('users')
-            .select('wallet_address')
+            .select('*')
             .eq('wallet_address', walletAddress.toLowerCase())
             .single();
 
         if (!userCheck) {
             console.log(`Creating new user record for ${walletAddress}`);
             
-            // Generate random referral code (8 chars)
-            const newReferralCode = crypto.randomBytes(4).toString('hex');
+            // Generate referral code: Last 6 digits of wallet (User Request)
+            const newReferralCode = walletAddress.slice(-6).toUpperCase();
             
-            const { error: userError } = await supabase
+            const { data: newUser, error: userError } = await supabase
                 .from('users')
                 .insert({ 
                     wallet_address: walletAddress.toLowerCase(),
                     referral_code: newReferralCode,
-                    // created_at will default to now() if omitted, or use consistent naming
-                    created_at: new Date().toISOString()
-                });
+                    created_at: new Date().toISOString(),
+                    total_deposited_usdt: 0
+                })
+                .select()
+                .single();
             
             if (userError) {
                 console.error("Error creating user:", userError);
-                // Continue anyway? If using Service Key, maybe verify if check failed purely due to "not found" vs "error"
+            } else {
+                userCheck = newUser;
             }
         }
 
@@ -123,8 +128,6 @@ app.post('/api/deposits/track', async (req, res) => {
                 order_id: orderId,
                 user_address: walletAddress.toLowerCase(),
                 amount: amount,
-                // We might want to store cctAmount/lockYears in a metadata column if schema supports it, 
-                // or just basic info for now. Assuming schema has basic fields.
                 referral_code: referralCode,
                 tx_hash: txHash,
                 status: 'verified', // It's on-chain, so it is effectively verified/submitted
@@ -134,6 +137,20 @@ app.post('/api/deposits/track', async (req, res) => {
             .single();
 
         if (error) throw error;
+        
+        // 3. Update User's Total Staked (USDT)
+        if (userCheck) {
+            const currentTotal = parseFloat(userCheck.total_deposited_usdt || 0);
+            const depositAmount = parseFloat(amount || 0);
+            const newTotal = currentTotal + depositAmount;
+            
+            await supabase
+                .from('users')
+                .update({ total_deposited_usdt: newTotal })
+                .eq('wallet_address', walletAddress.toLowerCase());
+                
+            console.log(`Updated total_deposited_usdt for ${walletAddress}: ${currentTotal} -> ${newTotal}`);
+        }
 
         // Handle referrals if code provided
         if (referralCode) {
@@ -149,6 +166,40 @@ app.post('/api/deposits/track', async (req, res) => {
 });
 
 /**
+ * GET /api/referral/resolve/:code
+ * Resolves a referral code to a wallet address.
+ */
+app.get('/api/referral/resolve/:code', async (req, res) => {
+    try {
+        const codeInput = req.params.code.trim();
+        let query = supabase.from('users').select('wallet_address, referral_code');
+
+        // Check if input looks like an address (Case Insensitive check)
+        if (codeInput.startsWith('0x') && codeInput.length === 42) {
+             query = query.eq('wallet_address', codeInput.toLowerCase());
+        } else {
+             // Assume it's a code
+             query = query.ilike('referral_code', codeInput);
+        }
+
+        const { data: user, error } = await query.single();
+            
+        if (user) {
+            return res.json({ 
+                walletAddress: user.wallet_address,
+                referralCode: user.referral_code
+            });
+        }
+        
+        return res.status(404).json({ error: 'Referral code or user not found' });
+    } catch (e) {
+        console.error("Resolve error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+/**
  * POST /api/deposits/verify
  * Verifies a transaction hash submitted by the user.
  * 1. Checks transaction via Moralis
@@ -156,7 +207,7 @@ app.post('/api/deposits/track', async (req, res) => {
  * 3. Updates database status to 'verified'
  * 4. Records referral connection
  */
-app.post('/api/deposits/verify', async (req, res) => {
+ app.post('/api/deposits/verify', async (req, res) => {
     try {
         const { orderId, txHash } = req.body;
 
@@ -190,6 +241,27 @@ app.post('/api/deposits/verify', async (req, res) => {
         // 3. Handle Referrals (Backend Logic)
         if (verification.referralCode) {
             await handleReferral(verification.userAddress, verification.referralCode, orderId);
+        }
+
+        // 4. Update User's Total Staked
+        // CRITICAL FIX: Ensure verify endpoint also updates stats
+        const { data: userStats } = await supabase
+            .from('users')
+            .select('*')
+            .eq('wallet_address', verification.userAddress.toLowerCase())
+            .single();
+
+        if (userStats) {
+            const currentTotal = parseFloat(userStats.total_deposited_usdt || 0);
+            const depositAmount = parseFloat(verification.amount || 0);
+            const newTotal = currentTotal + depositAmount;
+            
+            await supabase
+                .from('users')
+                .update({ total_deposited_usdt: newTotal })
+                .eq('wallet_address', verification.userAddress.toLowerCase());
+                
+            console.log(`[Verify] Updated total_deposited_usdt for ${verification.userAddress}: ${currentTotal} -> ${newTotal}`);
         }
 
         res.json({ 
@@ -234,7 +306,7 @@ app.post('/api/admin/deposits/approve/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
         const { tokensAllocated } = req.body; 
-
+        
         if (!tokensAllocated) return res.status(400).json({ error: 'Token allocation required' });
 
         // Update deposit status
@@ -258,34 +330,65 @@ app.post('/api/admin/deposits/approve/:orderId', async (req, res) => {
 });
 
 /**
+ * GET /api/admin/recalculate-totals
+ * Helper to fix missing user totals (Run once)
+ */
+app.get('/api/admin/recalculate-totals', async (req, res) => {
+    try {
+        console.log("🔄 Starting Total Staked Recalculation...");
+        
+        // 1. Fetch all verified/approved deposits
+        const { data: deposits, error } = await supabase
+            .from('deposits')
+            .select('user_address, amount')
+            .in('status', ['verified', 'approved']);
+            
+        if (error) throw error;
+        
+        // 2. Aggregate Totals
+        const userTotals = {};
+        deposits.forEach(d => {
+            const addr = d.user_address.toLowerCase();
+            const amt = parseFloat(d.amount);
+            userTotals[addr] = (userTotals[addr] || 0) + amt;
+            console.log(`User ${addr}: +${amt} => ${userTotals[addr]}`);
+        });
+
+        // 3. Update Users Table
+        let updateCount = 0;
+        for (const [address, total] of Object.entries(userTotals)) {
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ total_deposited_usdt: total })
+                .eq('wallet_address', address);
+                
+            if (updateError) console.error(`Failed update for ${address}:`, updateError);
+            else updateCount++;
+        }
+        
+        console.log(`✅ Recalculated totals for ${updateCount} users.`);
+        res.json({ success: true, updatedUsers: updateCount, totals: userTotals });
+        
+    } catch (error) {
+        console.error("Recalculation error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
  * GET /api/referrals/tree/:address
  * Get referral stats for a user
  */
 app.get('/api/referrals/tree/:address', async (req, res) => {
     try {
         const address = req.params.address.toLowerCase();
-
-        // Count level 1
-        const { count: level1Count, error: err1 } = await supabase
-            .from('referrals')
-            .select('*', { count: 'exact', head: true })
-            .eq('referrer_address', address)
-            .eq('level', 1);
-
-        // Count level 2
-        const { count: level2Count, error: err2 } = await supabase
-            .from('referrals')
-            .select('*', { count: 'exact', head: true })
-            .eq('referrer_address', address)
-            .eq('level', 2);
-
-        if (err1 || err2) throw err1 || err2;
+        const counts = await getReferralCounts(address);
 
         res.json({
             address: address,
-            directReferrals: level1Count,
-            indirectReferrals: level2Count,
-            totalReferrals: level1Count + level2Count
+            directReferrals: counts.direct,
+            indirectReferrals: counts.indirect,
+            totalReferrals: counts.total
         });
 
     } catch (error) {
@@ -312,7 +415,9 @@ app.post('/api/wallet/register', async (req, res) => {
 
         if (!user) {
             console.log(`Registering new user: ${walletAddress}`);
-            const newReferralCode = crypto.randomBytes(4).toString('hex');
+            // Generate referral code: Last 6 digits of wallet (User Request)
+            const newReferralCode = walletAddress.slice(-6).toUpperCase();
+            
             const { error } = await supabase.from('users').insert({
                 wallet_address: walletAddress.toLowerCase(),
                 referral_code: newReferralCode,
@@ -334,8 +439,52 @@ app.post('/api/wallet/register', async (req, res) => {
  * Currently returns "Not Eligible" as default until Merkle logic is integrated.
  */
 app.get('/api/rewards/proof/:address/latest', async (req, res) => {
-    // TODO: Integrate actual Merkle Tree generation/lookup
-    res.json({ eligible: false, amount: 0, proof: [], epochId: null });
+    // TODO: Maintain compatibility but this should query reward_entries
+     try {
+        const address = req.params.address.toLowerCase();
+        
+        // 1. Check User Eligibility (Referrals)
+        const { data: user } = await supabase
+            .from('users')
+            .select('total_deposited_usdt, direct_referrals_count')
+            .eq('wallet_address', address)
+            .single();
+
+        let isEligible = false;
+        if (user) {
+            const staked = parseFloat(user.total_deposited_usdt || 0);
+            const refs = user.direct_referrals_count || 0;
+            // Logic: $100+ needs 5 refs, <$100 needs 10 refs
+            const target = staked >= 100 ? 5 : 10;
+            if (refs >= target) {
+                isEligible = true;
+            }
+        }
+
+        // 2. Find stored reward entry
+        const { data: entry } = await supabase
+            .from('reward_entries')
+            .select('*')
+            .eq('user_address', address)
+            .eq('pool_type', 'standard')
+            .order('epoch_id', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (entry && isEligible) {
+            res.json({ 
+                eligible: true, 
+                amount: entry.amount, 
+                proof: entry.proof, 
+                epochId: entry.epoch_id 
+            });
+        } else {
+             // Return reason for debug if needed, but keeping schema
+             res.json({ eligible: false, amount: 0, proof: [], epochId: null });
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 /**
@@ -343,16 +492,44 @@ app.get('/api/rewards/proof/:address/latest', async (req, res) => {
  * Returns Merkle proof for VIP Rewards.
  */
 app.get('/api/vip/proof/:address/latest', async (req, res) => {
-    // TODO: Integrate actual Merkle Tree generation/lookup
-    res.json({ 
-        eligible: false, 
-        amount: 0, 
-        proof: [], 
-        epochId: null,
-        totalReferrals: 0,
-        directReferrals: 0, 
-        indirectReferrals: 0 
-    });
+    try {
+        const address = req.params.address.toLowerCase();
+        const counts = await getReferralCounts(address);
+        
+        // Find proof
+        const { data: entry } = await supabase
+            .from('reward_entries')
+            .select('*')
+            .eq('user_address', address)
+            .eq('pool_type', 'vip')
+            .order('epoch_id', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (entry) {
+              res.json({ 
+                eligible: true, 
+                amount: entry.amount, 
+                proof: entry.proof, 
+                epochId: entry.epoch_id,
+                totalReferrals: counts.total,
+                directReferrals: counts.direct, 
+                indirectReferrals: counts.indirect 
+            });
+        } else {
+            res.json({ 
+                eligible: false, 
+                amount: 0, 
+                proof: [], 
+                epochId: null,
+                totalReferrals: counts.total,
+                directReferrals: counts.direct, 
+                indirectReferrals: counts.indirect 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 /**
@@ -376,9 +553,53 @@ app.post('/api/vip/mark-claimed', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Helper: Handle Referral Logic
-async function handleReferral(userAddress, referralCode, depositId) {
+// Helper: Get Referral Counts (Direct + Indirect)
+async function getReferralCounts(walletAddress) {
     try {
+        const address = walletAddress.toLowerCase();
+        
+        // Count Level 1 (direct)
+        const { count: directCount } = await supabase
+            .from('referrals')
+            .select('*', { count: 'exact', head: true })
+            .eq('referrer_address', address)
+            .eq('level', 1);
+        
+        // Count Level 2 (indirect)  
+        const { count: indirectCount } = await supabase
+            .from('referrals')
+            .select('*', { count: 'exact', head: true })
+            .eq('referrer_address', address)
+            .eq('level', 2);
+        
+        return {
+            direct: directCount || 0,
+            indirect: indirectCount || 0,
+            total: (directCount || 0) + (indirectCount || 0)
+        };
+    } catch (error) {
+        console.error('Error getting referral counts:', error);
+        return { direct: 0, indirect: 0, total: 0 };
+    }
+}
+
+// Helper: Handle Referral Logic
+async function handleReferral(userAddressRaw, referralCode, depositId) {
+    try {
+        const userAddress = userAddressRaw.toLowerCase();
+
+        // 0. CHECK IF USER ALREADY HAS A REFERRER
+        const { data: currentUser } = await supabase
+             .from('users')
+             .select('referrer_address')
+             .eq('wallet_address', userAddress)
+             .single();
+
+        if (currentUser && currentUser.referrer_address) {
+             console.log(`ℹ️ User ${userAddress} already has a referrer. Skipping referral logic.`);
+             return;
+        }
+
         // 1. Find Referrer by Code
         const { data: referrerUser } = await supabase
             .from('users')
@@ -414,16 +635,242 @@ async function handleReferral(userAddress, referralCode, depositId) {
         }
         
         // 4. Update Referrer Link in Users Table (if not set)
-        await supabase
+        const { data: updatedUser, error: linkError } = await supabase
             .from('users')
             .update({ referrer_address: referrerAddress })
             .eq('wallet_address', userAddress)
-            .is('referrer_address', null); // Only set if empty
+            .is('referrer_address', null)
+            .select();
+
+        if (updatedUser && updatedUser.length > 0) {
+            console.log(`🔗 Linked ${userAddress} to referrer ${referrerAddress}`);
+            
+            // Increment Direct Referrals Count for the Referrer
+            // We fetch the current count first to be safe
+            const { data: currentReferrer } = await supabase
+                .from('users')
+                .select('direct_referrals_count')
+                .eq('wallet_address', referrerAddress)
+                .single();
+                
+            if (currentReferrer) {
+                const newCount = (currentReferrer.direct_referrals_count || 0) + 1;
+                await supabase
+                    .from('users')
+                    .update({ direct_referrals_count: newCount })
+                    .eq('wallet_address', referrerAddress);
+                console.log(`📈 Incremented referral count for ${referrerAddress} to ${newCount}`);
+            }
+        } else {
+             console.log(`ℹ️ User ${userAddress} already has a referrer or update failed.`);
+        }
 
     } catch (error) {
         console.error('Referral handling error:', error);
     }
 }
+
+/**
+ * GET /api/admin/rewards/eligible-count
+ * Count eligible users for Standard reward pool
+ */
+app.get('/api/admin/rewards/eligible-count', async (req, res) => {
+    try {
+        // Count users with at least one verified/approved deposit (active stakers)
+        const { data: activeStakers, error } = await supabase
+            .from('deposits')
+            .select('user_address')
+            .in('status', ['verified', 'approved']);
+        
+        if (error) throw error;
+        
+        // Get unique users
+        const uniqueUsers = [...new Set(activeStakers.map(d => d.user_address))];
+        
+        res.json({ 
+            eligibleCount: uniqueUsers.length,
+            users: uniqueUsers
+        });
+    } catch (error) {
+        console.error('Error counting eligible users:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/admin/vip/eligible-count  
+ * Count eligible users for VIP reward pool (100+ referrals)
+ */
+app.get('/api/admin/vip/eligible-count', async (req, res) => {
+    try {
+        // Get all users
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('wallet_address');
+            
+        if (error) throw error;
+        
+        // Check referral counts for each
+        const vipUsers = [];
+        for (const user of users) {
+            const counts = await getReferralCounts(user.wallet_address);
+            if (counts.total >= 100) {
+                vipUsers.push({
+                    wallet_address: user.wallet_address,
+                    total_referrals: counts.total
+                });
+            }
+        }
+        
+        res.json({ 
+            eligibleCount: vipUsers.length,
+            users: vipUsers
+        });
+    } catch (error) {
+        console.error('Error counting VIP eligible users:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// Helper: Generate Merkle Tree & Save Epoch
+async function generateAndSaveEpoch(users, totalAmountWei, type = 'standard') {
+    // 1. Get next epoch ID
+    // Check if table exists implicitly by trying select
+    // We assume 'reward_entries' exists. If not, this throws error.
+    const { data: lastEpoch, error: epochError } = await supabase
+        .from('reward_entries')
+        .select('epoch_id')
+        .eq('pool_type', type)
+        .order('epoch_id', { ascending: false })
+        .limit(1);
+        
+    // Handle single result logic more safely manually
+    const lastRow = (lastEpoch && lastEpoch.length > 0) ? lastEpoch[0] : null;
+    
+    let nextEpochId = 1;
+    if (lastRow) {
+        nextEpochId = (lastRow.epoch_id || 0) + 1;
+    }
+
+    const amountPerUser = BigInt(totalAmountWei) / BigInt(users.length);
+
+    console.log(`Generating ${type} Epoch ${nextEpochId} for ${users.length} users. Amount/User: ${amountPerUser}`);
+
+    // 2. Prepare Leaves & Entries
+    const entries = users.map(user => ({
+        user_address: user.wallet_address || user, // Handle object or string
+        epoch_id: nextEpochId,
+        amount: amountPerUser.toString(),
+        pool_type: type,
+        status: 'pending'
+    }));
+
+    // 3. Insert into DB (Init)
+    const { error: insertError } = await supabase.from('reward_entries').insert(entries);
+    if (insertError) {
+        console.error('Error inserting reward entries (table might be missing?):', insertError);
+        throw new Error(`DB Error inserting entries: ${insertError.message}`);
+    }
+
+    // 4. Generate Tree
+    // Leaf: keccak256(user, epochId, amount)
+    const leaves = entries.map(e => {
+        return ethers.solidityPackedKeccak256(
+            ['address', 'uint256', 'uint256'],
+            [e.user_address, e.epoch_id, e.amount]
+        );
+    });
+
+    const tree = new MerkleTree(leaves, ethers.keccak256, { 
+        sortPairs: true,
+        hashLeaves: false 
+    });
+    
+    const root = tree.getHexRoot();
+
+    // 5. Update Proofs in DB
+    for (let i = 0; i < entries.length; i++) {
+        const proof = tree.getHexProof(leaves[i]);
+        await supabase
+            .from('reward_entries')
+            .update({ 
+                proof: proof,
+                merkle_root: root
+            })
+            .eq('user_address', entries[i].user_address)
+            .eq('epoch_id', nextEpochId)
+            .eq('pool_type', type);
+    }
+
+    return { merkleRoot: root, epochId: nextEpochId, count: users.length };
+}
+
+/**
+ * POST /api/admin/generate-epoch
+ * Generate Merkle Tree for Standard Rewards
+ */
+app.post('/api/admin/generate-epoch', async (req, res) => {
+    try {
+        const { totalAmount } = req.body;
+        if (!totalAmount) return res.status(400).json({ error: 'Total amount required' });
+
+        // 1. Get Eligible Users
+        const { data: activeStakers, error } = await supabase
+            .from('deposits')
+            .select('user_address')
+            .in('status', ['verified', 'approved']);
+            
+        if (error) throw error;
+        const uniqueUsers = [...new Set(activeStakers.map(d => d.user_address))];
+
+        if (uniqueUsers.length === 0) return res.status(400).json({ error: 'No eligible users found' });
+
+        // 2. Generate
+        const result = await generateAndSaveEpoch(uniqueUsers, totalAmount, 'standard');
+        
+        res.json(result);
+
+    } catch (error) {
+        console.error('Generate Epoch Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/generate-vip-epoch
+ * Generate Merkle Tree for VIP Rewards
+ */
+app.post('/api/admin/generate-vip-epoch', async (req, res) => {
+    try {
+        const { totalAmount } = req.body;
+        if (!totalAmount) return res.status(400).json({ error: 'Total amount required' });
+
+        // 1. Get All Users
+        const { data: users, error } = await supabase.from('users').select('wallet_address');
+        if (error) throw error;
+
+        // 2. Filter VIPs (100+ Referrals)
+        const vipUsers = [];
+        for (const user of users) {
+             const counts = await getReferralCounts(user.wallet_address);
+             if (counts.total >= 100) {
+                 vipUsers.push(user.wallet_address); 
+             }
+        }
+
+        if (vipUsers.length === 0) return res.status(400).json({ error: 'No VIP users found' });
+
+        // 3. Generate
+        const result = await generateAndSaveEpoch(vipUsers, totalAmount, 'vip');
+        
+        res.json(result);
+
+    } catch (error) {
+        console.error('Generate VIP Epoch Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`🚀 API Server running on port ${PORT}`);

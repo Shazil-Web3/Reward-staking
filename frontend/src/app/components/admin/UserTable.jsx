@@ -23,7 +23,22 @@ const UserTable = () => {
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (data) setUsers(data);
+            if (data) {
+                // Fetch referral counts for each user
+                const usersWithReferrals = await Promise.all(data.map(async (user) => {
+                    try {
+                        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/referrals/tree/${user.wallet_address}`);
+                        if (res.ok) {
+                            const referralData = await res.json();
+                            return { ...user, total_referrals: referralData.totalReferrals };
+                        }
+                    } catch (err) {
+                        console.error('Error fetching referrals for', user.wallet_address, err);
+                    }
+                    return { ...user, total_referrals: 0 };
+                }));
+                setUsers(usersWithReferrals);
+            }
         } catch (error) {
             console.error("Error fetching users:", error);
         } finally {
@@ -40,7 +55,7 @@ const UserTable = () => {
 
     // Helper: Check if user is eligible
     const isEligible = (user) => {
-        const required = getReferralRequirement(user.total_staked || 0);
+        const required = getReferralRequirement(user.total_deposited_usdt || 0);
         return (user.direct_referrals_count || 0) >= required;
     };
 
@@ -73,7 +88,7 @@ const UserTable = () => {
                             <TableHead>Wallet Address</TableHead>
                             <TableHead>Referral Code</TableHead>
                             <TableHead>Total Staked</TableHead>
-                            <TableHead>Direct Referrals</TableHead>
+                            <TableHead>Total Referrals</TableHead>
                             <TableHead>Required</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Joined</TableHead>
@@ -92,7 +107,7 @@ const UserTable = () => {
                             filteredUsers.map((user, i) => (
                                 <TableRow key={i}>
                                     <TableCell className="font-mono text-xs md:text-sm">
-                                        {user.wallet_address}
+                                        {user.wallet_address.slice(0, 6)}...{user.wallet_address.slice(-4)}
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="outline" className="font-mono">
@@ -100,13 +115,13 @@ const UserTable = () => {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="font-medium">
-                                        ${user.total_staked?.toLocaleString()}
+                                        ${user.total_deposited_usdt?.toLocaleString()}
                                     </TableCell>
                                     <TableCell>
-                                        {user.direct_referrals_count}
+                                        {user.total_referrals || 0}
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
-                                        {getReferralRequirement(user.total_staked || 0)}
+                                        {getReferralRequirement(user.total_deposited_usdt || 0)}
                                     </TableCell>
                                     <TableCell>
                                         {isEligible(user) ? (

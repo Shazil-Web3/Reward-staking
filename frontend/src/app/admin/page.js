@@ -5,7 +5,7 @@ import DashboardStats from '@/app/components/admin/DashboardStats';
 import UserTable from '@/app/components/admin/UserTable';
 import PoolManager from '@/app/components/admin/PoolManager';
 import VIPPoolManager from '@/app/components/admin/VIPPoolManager';
-import DepositManager from '@/app/components/admin/DepositManager';
+import ContractEscrowManager from '@/app/components/admin/ContractEscrowManager';
 import { LayoutDashboard } from 'lucide-react';
 
 export default function AdminPage() {
@@ -32,31 +32,29 @@ export default function AdminPage() {
             <h2 className="text-3xl font-bold tracking-tight">Overview</h2>
           </div>
 
-          {/* Stats Grid */}
+          {/* 1. Stats Grid (Now with Escrow Balance) */}
           <DashboardStats />
 
-          {/* Main Content - Vertical Stack */}
-          <div className="space-y-8">
-            
-            {/* 1. Deposit Manager (High Priority) */}
-            <div className="w-full">
-                <DepositManager />
-            </div>
+          {/* 2. Contract Central Funding (Replaces individual funding) */}
+          <div className="w-full">
+            <ContractEscrowManager />
+          </div>
 
-            {/* 2. Pool Manager */}
-            <div className="w-full">
-              <PoolManager />
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* 3. Pool Manager (Distribution Only) */}
+              <div className="w-full">
+                <PoolManager />
+              </div>
 
-            {/* 3. VIP Pool Manager */}
-            <div className="w-full">
-              <VIPPoolManager />
-            </div>
+              {/* 4. VIP Pool Manager (Distribution Only) */}
+              <div className="w-full">
+                <VIPPoolManager />
+              </div>
+          </div>
 
-            {/* 4. User Table */}
-            <div className="w-full">
-              <UserTable />
-            </div>
+          {/* 5. User Table */}
+          <div className="w-full">
+            <UserTable />
           </div>
         </main>
       </div>

@@ -1,56 +1,80 @@
 'use client';
 
 import { Card } from '@/app/components/ui/card';
-import { Coins, Users, Lock, TrendingUp, Crown } from 'lucide-react';
+import { Coins, Users, Lock, TrendingUp, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useReadContract } from 'wagmi';
+import { formatUnits, erc20Abi } from 'viem';
+import StakingArtifact from '@/context/staking.json';
+
+const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
+// Fallback if contract read fails
+const DEFAULT_CCT_ADDRESS = process.env.NEXT_PUBLIC_CCT_TOKEN_ADDRESS || "0x4B4C80667cd1C40BFD2382126809C1890a08eBD4";
 
 const DashboardStats = () => {
     const [stats, setStats] = useState([
-        { title: "Total Staked", value: "Loading...", change: "...", icon: Lock },
-        { title: "Reward Pool", value: "Loading...", change: "...", icon: Coins },
-        { title: "VIP Pool", value: "Loading...", change: "...", icon: Crown },
-        { title: "Active Users", value: "Loading...", change: "...", icon: Users },
-        { title: "Total Supply", value: "100T", change: "Max Supply", icon: TrendingUp },
+        { title: "Total Staked", value: "Loading...", change: "...", icon: Lock, bg: "bg-blue-50 text-blue-600" },
+        { title: "Escrow Balance", value: "Loading...", change: "Contract Holdings", icon: Wallet, bg: "bg-green-50 text-green-600" },
+        { title: "Active Users", value: "Loading...", change: "...", icon: Users, bg: "bg-indigo-50 text-indigo-600" },
     ]);
+
+    // 1. Fetch CCT Token Address from Contract
+    const { data: contractCctAddress } = useReadContract({
+        address: STAKING_CONTRACT_ADDRESS,
+        abi: StakingArtifact.abi,
+        functionName: 'cctToken',
+    });
+
+    const cctTokenAddress = contractCctAddress || DEFAULT_CCT_ADDRESS;
+
+    // 2. Fetch Token Decimals
+    const { data: tokenDecimals } = useReadContract({
+        address: cctTokenAddress,
+        abi: erc20Abi,
+        functionName: 'decimals',
+        query: { enabled: !!cctTokenAddress }
+    });
+    const decimals = tokenDecimals || 18;
+
+    // 3. Fetch Contract's CCT Balance (Escrow)
+    const { data: contractBalance } = useReadContract({
+        address: cctTokenAddress,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [STAKING_CONTRACT_ADDRESS],
+        query: { enabled: !!cctTokenAddress },
+        watch: true, // Auto-update
+    });
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
                 // Fetch Total Staked (Sum of all users' staked amount)
-                const { data: stakedData, error: stakedError } = await supabase
+                const { data: stakedData } = await supabase
                     .from('users')
-                    .select('total_staked');
+                    .select('total_deposited_usdt');
 
                 const totalStaked = stakedData
-                    ? stakedData.reduce((acc, user) => acc + (user.total_staked || 0), 0)
+                    ? stakedData.reduce((acc, user) => acc + (user.total_deposited_usdt || 0), 0)
                     : 0;
 
                 // Fetch Total Users
-                const { count: userCount, error: userError } = await supabase
+                const { count: userCount } = await supabase
                     .from('users')
                     .select('*', { count: 'exact', head: true });
 
-                // Fetch Reward Pool (Live from Backend API)
-                let rewardBalance = 0;
-                let vipPoolBalance = 0;
-                try {
-                    const poolRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/admin/pool-stats`);
-                    if (poolRes.ok) {
-                        const poolData = await poolRes.json();
-                        // poolBalance is in wei, format it
-                        rewardBalance = parseFloat(poolData.poolBalance) / 1e18; // Assuming 18 decimals
-                    }
+                // Format Contract Balance
+                const safeDecimals = tokenDecimals ? Number(tokenDecimals) : 18;
+                console.log("Stats Debug:", {
+                    balance: contractBalance?.toString(),
+                    decimals: safeDecimals,
+                    rawDecimals: tokenDecimals
+                });
 
-                    // Fetch VIP Pool
-                    const vipRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/admin/vip-pool-stats`);
-                    if (vipRes.ok) {
-                        const vipData = await vipRes.json();
-                        vipPoolBalance = parseFloat(vipData.vipPoolBalance) / 1e18;
-                    }
-                } catch (e) {
-                    console.error("Pool stats fetch error", e);
-                }
+                const formattedBalance = contractBalance !== undefined
+                    ? parseFloat(formatUnits(contractBalance, safeDecimals)).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : "...";
 
                 setStats([
                     {
@@ -58,55 +82,48 @@ const DashboardStats = () => {
                         value: `$${totalStaked.toLocaleString()}`,
                         change: "Real-time data",
                         icon: Lock,
+                        bg: "bg-blue-50 text-blue-600"
                     },
                     {
-                        title: "Reward Pool",
-                        value: `${rewardBalance.toLocaleString()} TOKENS`,
-                        change: "Ready to distribute",
-                        icon: Coins,
-                    },
-                    {
-                        title: "VIP Pool",
-                        value: `${vipPoolBalance.toLocaleString()} TOKENS`,
-                        change: "100+ referrals",
-                        icon: Crown,
+                        title: "Contract Escrow",
+                        value: `${formattedBalance} CCT`,
+                        change: "Verified on-chain",
+                        icon: Wallet,
+                        bg: "bg-green-50 text-green-600"
                     },
                     {
                         title: "Active Users",
                         value: userCount?.toString() || "0",
                         change: "Total registered",
                         icon: Users,
-                    },
-                    {
-                        title: "Total Supply",
-                        value: "100T",
-                        change: "Max Supply",
-                        icon: TrendingUp,
+                        bg: "bg-indigo-50 text-indigo-600"
                     },
                 ]);
 
             } catch (error) {
                 console.error("Error fetching stats:", error);
-                // On error (e.g. missing keys), show zeros or placeholders but don't crash
-                setStats(prev => prev.map(s => ({ ...s, value: s.value === "Loading..." ? "0" : s.value })));
             }
         };
 
         fetchStats();
-    }, []);
+    }, [contractBalance, decimals, contractCctAddress]); // Re-run when wagmi data changes
 
     return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-3">
             {stats.map((stat, index) => {
                 const Icon = stat.icon;
                 return (
-                    <Card key={index} className="p-6 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-muted-foreground">{stat.title}</span>
-                            <Icon className="h-4 w-4 text-muted-foreground" />
+                    <Card key={index} className="p-6 transition-all hover:shadow-md border-t-4 border-t-primary/20">
+                        <div className="flex items-center justify-between space-y-0 pb-2">
+                            <div className={`p-2 rounded-lg ${stat.bg}`}>
+                                <Icon className="h-6 w-6" />
+                            </div>
+                            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full">{stat.change}</span>
                         </div>
-                        <div className="text-2xl font-bold">{stat.value}</div>
-                        <p className="text-xs text-muted-foreground">{stat.change}</p>
+                        <div className="mt-3">
+                            <h3 className="text-sm font-medium text-muted-foreground mb-1">{stat.title}</h3>
+                            <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                        </div>
                     </Card>
                 );
             })}

@@ -12,6 +12,8 @@
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
     "express": "^5.1.0",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.6.0",
     "moralis": "^2.27.2"
   }
 }

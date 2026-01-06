@@ -23,10 +23,10 @@ export const useStaking = () => {
 };
 
 // Contract Address from env - NEW CONTRACT!
-const STAKING_CONTRACT_ADDRESS = "0x0e7FeC1c8873940216F64317d2cB58AE1267D45b";
+const STAKING_CONTRACT_ADDRESS = "0xdB99bB1444C78eB6df8C911124AFFDDaa2A71DDE";
 
 // Token Addresses
-const CCT_TOKEN_ADDRESS = "0x4B4C80667cd1C40BFD2382126809C1890a08eBD4";
+const CCT_TOKEN_ADDRESS = "0x263Fc3c1C7E23dAEd1a83d0F61a2423573b51988";
 const USDT_TOKEN_ADDRESS = "0x3033AeAE74de8B3a55a2b56412Bf952a5cAE1Bf1";
 
 // Validation
@@ -211,12 +211,38 @@ export const StakingProvider = ({ children }) => {
             if (isNaN(cctDecimal) || cctDecimal <= 0) {
                 throw new Error(`Invalid CCT amount: ${cctAmountConverted}`);
             }
-            const cctAmount = parseUnits(cctDecimal.toString(), 18);
 
-            console.log("🔍 DEBUG - CCT Amount:", { cctAmount: cctAmount.toString() });
+            // Calculate Net Amount (Deduct 10% Fee)
+            const cctDecimalNet = cctDecimal * 0.9; // 10% Fee deduction
+            console.log(`💰 Fee Calculation: Gross=${cctDecimal} CCT, Fee=10%, Net=${cctDecimalNet} CCT`);
+
+            // Fetch CCT Decimals dynamically to prevent precision mismatch
+            let cctDecimals = 18; // Default
+            try {
+                const fetchedDecimals = await publicClient.readContract({
+                    address: CCT_TOKEN_ADDRESS,
+                    abi: erc20Abi,
+                    functionName: 'decimals'
+                });
+                cctDecimals = Number(fetchedDecimals);
+                console.log(`✅ Fetched CCT Decimals: ${cctDecimals}`);
+            } catch (err) {
+                console.warn("⚠️ Failed to fetch CCT decimals, defaulting to 18:", err);
+            }
+
+            // Use Net Amount for the stake
+            const cctAmount = parseUnits(cctDecimalNet.toFixed(cctDecimals), cctDecimals);
+
+            console.log("🔍 DEBUG - CCT Amount (Net):", {
+                readableGross: cctDecimal,
+                readableNet: cctDecimalNet,
+                decimals: cctDecimals,
+                rawNet: cctAmount.toString()
+            });
 
             // Convert years to seconds
-            const lockDurationSeconds = lockDurationYears * 365 * 24 * 60 * 60;
+            // TESTING: Using 60 seconds (1 minute) instead of years
+            const lockDurationSeconds = 60; // lockDurationYears * 365 * 24 * 60 * 60;
 
             // Generate unique order ID
             const timestamp = Math.floor(Date.now() / 1000);
@@ -308,17 +334,82 @@ export const StakingProvider = ({ children }) => {
      */
     const withdraw = useCallback(async (index) => {
         try {
+            console.log("🔍 Attempting withdrawal for stake index:", index);
+
+            // Get stake details before attempting withdrawal
+            if (stakes && stakes[index]) {
+                const stake = stakes[index];
+                console.log("Stake details:", {
+                    cctAmount: stake.cctAmount?.toString(),
+                    unlockTime: stake.unlockTime?.toString(),
+                    unlockDate: new Date(Number(stake.unlockTime) * 1000),
+                    withdrawn: stake.withdrawn,
+                    currentTime: new Date(),
+                    currentTimestamp: Math.floor(Date.now() / 1000)
+                });
+
+                // Get current block timestamp from blockchain
+                const block = await publicClient.getBlock();
+                const blockTimestamp = Number(block.timestamp);
+                const unlockTimestamp = Number(stake.unlockTime);
+
+                // Check if amount is suspiciously large (Decimal Mismatch Detection)
+                if (stake.cctAmount && stake.cctAmount.toString().length > 24) {
+                    console.warn("⚠️ WARNING: Stake amount seems extremely large! This might be due to a decimal mismatch (18 vs 6 decimals) during deposit.");
+                }
+
+                console.log("⏰ Timestamp Check:", {
+                    blockTimestamp,
+                    unlockTimestamp,
+                    difference: unlockTimestamp - blockTimestamp,
+                    isUnlocked: blockTimestamp >= unlockTimestamp
+                });
+
+                // Pre-check if stake is unlocked on-chain
+                if (blockTimestamp < unlockTimestamp) {
+                    const remainingSeconds = unlockTimestamp - blockTimestamp;
+                    const remainingMinutes = Math.ceil(remainingSeconds / 60);
+                    throw new Error(
+                        `Stake is still locked. Please wait ${remainingMinutes} more minute(s). ` +
+                        `Unlock time: ${new Date(unlockTimestamp * 1000).toLocaleString()}`
+                    );
+                }
+
+                // Check if already withdrawn
+                if (stake.withdrawn) {
+                    throw new Error("This stake has already been withdrawn");
+                }
+            }
+
+
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'withdraw',
                 args: [BigInt(index)],
+                gas: 300000n, // Set reasonable gas limit to prevent estimation errors
             });
             return await handleTransaction(hash, "Withdraw");
         } catch (error) {
-            console.error("Withdraw error:", error);
+            console.error("❌ Withdraw error:", error);
+
+            // Extract revert reason if available
+            const revertReason = error?.reason || error?.message || "Unknown error";
+            console.error("Revert reason:", revertReason);
+
+            // Show user-friendly error
+            if (revertReason.includes("Already withdrawn")) {
+                throw new Error("This stake has already been withdrawn");
+            } else if (revertReason.includes("Still locked")) {
+                throw new Error("This stake is still locked. Please wait until the unlock time.");
+            } else if (revertReason.includes("Insufficient CCT")) {
+                throw new Error("Contract has insufficient CCT tokens. Please contact support.");
+            } else if (revertReason.includes("Invalid index")) {
+                throw new Error("Invalid stake index");
+            }
+
             throw error;
         }
-    }, [writeContract, contractConfig, publicClient]);
+    }, [writeContract, contractConfig, publicClient, stakes]);
 
     /**
      * Admin function: Add stake for a user

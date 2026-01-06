@@ -30,17 +30,21 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from '@/hooks/useWallet';
-import { useSwitchChain } from 'wagmi';
+import { useSwitchChain, usePublicClient } from 'wagmi';
 import StakingInterface from '@/app/components/StakingInterface';
 import { supabase } from '@/lib/supabase';
 import { useStaking } from '@/context/context';
+import { formatUnits, erc20Abi } from 'viem';
+import StakingArtifact from '@/context/staking.json';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
+const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
 
 const Dashboard = () => {
   const [copied, setCopied] = useState(false);
   const { address, isConnected, chain, balance, balanceLoading } = useWallet();
   const { chains, switchChain } = useSwitchChain();
+  const publicClient = usePublicClient();
   const { withdraw, stakes: contractStakes, refetchStakes, isLoading: stakesLoading, claimReward, claimVIPReward } = useStaking();
   const referralInputRef = useRef(null);
   
@@ -52,6 +56,9 @@ const Dashboard = () => {
   
   // Withdrawing state
   const [withdrawing, setWithdrawing] = useState(false);
+
+  // Contract CCT Balance for debug
+  const [contractCctBalance, setContractCctBalance] = useState(null);
 
   // Reward State (Backend-managed)
   const [rewardStatus, setRewardStatus] = useState({ eligible: false, amount: 0, proof: null, epochId: null, claimed: false });
@@ -111,6 +118,56 @@ const Dashboard = () => {
     }
   }, [isConnected, address]);
 
+  // Fetch contract CCT balance for debugging
+  useEffect(() => {
+    const fetchContractBalance = async () => {
+      if (!publicClient || !STAKING_CONTRACT_ADDRESS) return;
+      
+      try {
+        // Use CCT address from env (simpler than reading from contract)
+        const cctAddress = process.env.NEXT_PUBLIC_CCT_TOKEN_ADDRESS;
+        
+        if (!cctAddress) {
+          console.warn('CCT token address not configured');
+          return;
+        }
+
+        // Get contract's CCT balance
+        const balance = await publicClient.readContract({
+          address: cctAddress,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [STAKING_CONTRACT_ADDRESS]
+        });
+
+        setContractCctBalance(balance);
+      } catch (e) {
+        console.error('Error fetching contract balance:', e);
+      }
+    };
+
+    fetchContractBalance();
+    // Refetch every 10 seconds
+    const interval = setInterval(fetchContractBalance, 10000);
+    return () => clearInterval(interval);
+  }, [publicClient]);
+
+  // Separate effect to handle blockchain stakes
+  useEffect(() => {
+    if (contractStakes && contractStakes.length > 0) {
+      const formattedStakes = contractStakes.map((stake, index) => ({
+        amount: stake.cctAmount ? parseFloat(formatUnits(stake.cctAmount, 6)) : 0,
+        package_id: index,
+        start_time: stake.createdAt ? new Date(Number(stake.createdAt) * 1000) : new Date(),
+        end_time: stake.unlockTime ? new Date(Number(stake.unlockTime) * 1000) : new Date(),
+        status: stake.withdrawn ? 'withdrawn' : 'active'
+      }));
+      setStakes(formattedStakes);
+    } else {
+      setStakes([]);
+    }
+  }, [contractStakes]);
+
   const registerWallet = async () => {
     if (!address) return;
     try {
@@ -133,7 +190,21 @@ const Dashboard = () => {
             .eq('wallet_address', address.toLowerCase())
             .single();
         
-        if (user) setUserData(user);
+        if (user) {
+            // Fetch referral counts from API
+            try {
+                const referralRes = await fetch(`${BACKEND_API_URL}/api/referrals/tree/${address}`);
+                if (referralRes.ok) {
+                    const referralData = await referralRes.json();
+                    user.direct_referrals_count = referralData.directReferrals;
+                    user.indirect_referrals_count = referralData.indirectReferrals;
+                    user.total_referrals_count = referralData.totalReferrals;
+                }
+            } catch (err) {
+                console.error('Error fetching referral counts:', err);
+            }
+            setUserData(user);
+        }
 
 
 
@@ -143,7 +214,11 @@ const Dashboard = () => {
           .eq('user_address', address.toLowerCase())
           .order('created_at', { ascending: false });
 
-        if (userDeposits) setDeposits(userDeposits);
+        if (userDeposits) {
+            setDeposits(userDeposits);
+        }
+
+        // Stakes are now handled by separate useEffect watching contractStakes
 
     } catch (e) {
         console.error("Error loading dashboard data:", e);
@@ -161,7 +236,7 @@ const Dashboard = () => {
           if (res.ok) {
               const data = await res.json();
               setRewardStatus({
-                  eligible: true,
+                  eligible: data.eligible,
                   amount: data.amount,
                   proof: data.proof,
                   epochId: data.epochId,
@@ -185,7 +260,7 @@ const Dashboard = () => {
           if (res.ok) {
               const data = await res.json();
               setVipRewardStatus({
-                  eligible: true,
+                  eligible: data.eligible,
                   amount: data.amount,
                   proof: data.proof,
                   epochId: data.epochId,
@@ -207,6 +282,13 @@ const Dashboard = () => {
   // Direct contract-based claim handler
   const handleClaimReward = async () => {
       if (!rewardStatus.eligible || rewardStatus.claimed) return;
+      
+      // Safety check for proof
+      if (!rewardStatus.proof || !Array.isArray(rewardStatus.proof) || rewardStatus.proof.length === 0) {
+          alert("Error: Invalid or missing reward proof. Please refresh.");
+          return;
+      }
+
       try {
           setClaiming(true);
           
@@ -324,7 +406,7 @@ const Dashboard = () => {
       return 10;                          // $50-$99 = 10 referrals
   };
 
-  const totalStaked = userData?.total_staked || 0;
+  const totalStaked = userData?.total_deposited_usdt || 0;
   const referralTarget = getReferralTarget(totalStaked);
   const currentReferrals = userData?.direct_referrals_count || 0;
   const isReferralEligible = currentReferrals >= referralTarget;
@@ -418,7 +500,7 @@ const Dashboard = () => {
                     {[
                     {
                         title: "Total Staked",
-                        value: `$${userData?.total_staked?.toLocaleString() || '0'}`,
+                        value: `$${userData?.total_deposited_usdt?.toLocaleString() || '0'}`,
                         icon: <DollarSign className="h-6 w-6 text-primary" />,
                         bg: "bg-primary/10",
                     },
@@ -457,52 +539,7 @@ const Dashboard = () => {
                     <StakingInterface />
                 </div>
                 
-                {deposits.length > 0 && (
-                  <Card className="p-6 mb-8 border-l-4 border-l-yellow-500">
-                     <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-yellow-600" />
-                        Pending & Verified Deposits
-                    </h3>
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Order ID</TableHead>
-                                    <TableHead>Amount</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Time</TableHead>
-                                    <TableHead>Transaction</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {deposits.map((deposit) => (
-                                    <TableRow key={deposit.order_id}>
-                                        <TableCell className="font-mono text-xs">{deposit.order_id.slice(0, 10)}...</TableCell>
-                                        <TableCell className="font-bold">${deposit.amount}</TableCell>
-                                        <TableCell>
-                                            <Badge className={
-                                                deposit.status === 'verified' ? 'bg-blue-500' :
-                                                deposit.status === 'approved' ? 'bg-green-500' : 
-                                                deposit.status === 'pending' ? 'bg-yellow-500' : ''
-                                            }>
-                                                {deposit.status === 'verified' ? 'Verified (Wait for Admin)' : deposit.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-sm">{new Date(deposit.created_at).toLocaleString()}</TableCell>
-                                        <TableCell>
-                                            {deposit.tx_hash ? (
-                                                <a href={`https://etherscan.io/tx/${deposit.tx_hash}`} target="_blank" className="text-blue-500 hover:underline text-xs">
-                                                    View TX
-                                                </a>
-                                            ) : '-'}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                  </Card>
-                )}
+
 
                 <Card className="p-6 mb-8">
                     <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
@@ -546,7 +583,7 @@ const Dashboard = () => {
                                                             size="sm" 
                                                             variant={isUnlocked ? "default" : "outline"}
                                                             disabled={!isUnlocked}
-                                                            onClick={() => handleWithdraw(stake)}
+                                                            onClick={() => handleWithdraw(i)}
                                                         >
                                                             {isUnlocked ? "Withdraw" : "Locked"}
                                                         </Button>

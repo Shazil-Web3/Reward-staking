@@ -65,8 +65,8 @@ const StakingInterface = () => {
     setStakingAmount(value);
 
     const numValue = parseFloat(value);
-    if (value && numValue < 50) {
-      setError('Minimum staking amount is $50');
+    if (value && numValue < 1) {
+      setError('Minimum staking amount is $1');
     } else {
       setError('');
     }
@@ -74,8 +74,8 @@ const StakingInterface = () => {
 
   const handleInitiateStake = () => {
     const amount = parseFloat(stakingAmount);
-    if (!stakingAmount || amount < 50) {
-      setError('Minimum staking amount is $50');
+    if (!stakingAmount || amount < 1) {
+      setError('Minimum staking amount is $1');
       return;
     }
 
@@ -84,49 +84,41 @@ const StakingInterface = () => {
   };
 
   const handleStakeWithReferral = async () => {
-    let finalReferrer = "0x0000000000000000000000000000000000000000";
+    let resolvedReferralCode = "";
 
     // If referral input is provided, process it
     if (referralAddress && referralAddress.trim()) {
       const input = referralAddress.trim();
 
-      // Check if it's a wallet address (starts with 0x and is 42 chars)
-      if (isAddress(input)) {
-        // It's already a wallet address
-        if (input.toLowerCase() === address?.toLowerCase()) {
-          setReferralError('You cannot use your own address as referrer');
+      // ALWAYS Validate via API to ensure it exists and is correct
+      try {
+        setReferralError('');
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/referral/resolve/${input}`);
+
+        if (!response.ok) {
+          setReferralError('Invalid referral code or address');
           return;
         }
-        finalReferrer = input;
-      } else {
-        // It's a referral code - resolve it to wallet address
-        try {
-          setReferralError('');
-          const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001'}/api/referral/resolve/${input}`);
 
-          if (!response.ok) {
-            setReferralError('Invalid referral code');
-            return;
-          }
+        const data = await response.json();
 
-          const data = await response.json();
-
-          // Check for self-referral
-          if (data.walletAddress.toLowerCase() === address?.toLowerCase()) {
-            setReferralError('You cannot use your own referral code');
-            return;
-          }
-
-          finalReferrer = data.walletAddress;
-        } catch (error) {
-          console.error('Error resolving referral code:', error);
-          setReferralError('Failed to verify referral code');
+        // Check for self-referral
+        if (data.walletAddress.toLowerCase() === address?.toLowerCase()) {
+          setReferralError('You cannot use your own address/code');
           return;
         }
+
+        // Use the resolved code from backend (handles both address inputs and code inputs)
+        resolvedReferralCode = data.referralCode;
+
+      } catch (error) {
+        console.error('Error resolving referral code:', error);
+        setReferralError('Failed to verify referral code');
+        return;
       }
     }
 
-    // Close popup and proceed with  deposit
+    // Close popup and proceed with deposit
     setShowReferralPopup(false);
 
     const amount = parseFloat(stakingAmount);
@@ -144,14 +136,12 @@ const StakingInterface = () => {
 
       setTxStatus('Approving USDT tokens...');
 
-      // Call deposit with USD amount, CCT amount, lock duration, and referral code
-      const referralCode = referralAddress.trim() || '';
-
+      // Call deposit with USD amount, CCT amount, lock duration, and RESOLVED referral code
       const depositResult = await deposit(
         stakingAmount,    // USD amount (user is depositing USDT)
         cctAmount,        // CCT amount (stake amount they'll get later)
         selectedYears,    // Lock duration in years
-        referralCode      // Referral code or address
+        resolvedReferralCode // Pass the validated code
       );
 
       setTxStatus(`Success! Deposited $${stakingAmount} USDT for ${cctAmount} CCT stake (${selectedYears} year lock). TX: ${depositResult.txHash}`);
@@ -167,7 +157,7 @@ const StakingInterface = () => {
             amount: amount,
             cctAmount: cctAmount,
             lockYears: selectedYears,
-            referralCode: referralCode,
+            referralCode: resolvedReferralCode, // Use resolved code
             txHash: depositResult.txHash
           })
         });
@@ -192,7 +182,7 @@ const StakingInterface = () => {
   };
 
   const getReferralRequirement = (amount) => {
-    if (!amount || amount < 50) return 'N/A';
+    if (!amount || amount < 1) return 'N/A';
     if (amount >= 1000) return 'No referrals required';
     if (amount >= 100) return '5 direct referrals';
     return '10 direct referrals';
@@ -285,7 +275,7 @@ const StakingInterface = () => {
         </div>
 
         {/* Live PancakeSwap Price */}
-        {stakingAmount && parseFloat(stakingAmount) >= 50 && (
+        {stakingAmount && parseFloat(stakingAmount) >= 1 && (
           <Card className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950 border-2  border-blue-200">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
@@ -355,7 +345,7 @@ const StakingInterface = () => {
         )}
 
         {/* Staking Details */}
-        {stakingAmount && parseFloat(stakingAmount) >= 50 && (
+        {stakingAmount && parseFloat(stakingAmount) >= 1 && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-3">Staking Summary</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -397,7 +387,7 @@ const StakingInterface = () => {
         {/* Stake Button */}
         <Button
           onClick={handleInitiateStake}
-          disabled={!stakingAmount || parseFloat(stakingAmount) < 50 || !!error || isLoading}
+          disabled={!stakingAmount || parseFloat(stakingAmount) < 1 || !!error || isLoading}
           className="w-full gradient-primary text-white border-0 hover:opacity-90 transition-opacity h-12 text-lg font-semibold"
         >
           {isLoading ? (
