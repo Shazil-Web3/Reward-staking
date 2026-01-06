@@ -10,7 +10,7 @@ import StakingArtifact from '@/context/staking.json';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
 const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
-const DEFAULT_CCT_ADDRESS = process.env.NEXT_PUBLIC_CCT_TOKEN_ADDRESS || "0x4B4C80667cd1C40BFD2382126809C1890a08eBD4";
+const DEFAULT_CCT_ADDRESS = process.env.NEXT_PUBLIC_CCT_TOKEN_ADDRESS;
 
 const PoolManager = () => {
     const { writeContractAsync } = useWriteContract();

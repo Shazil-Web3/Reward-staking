@@ -466,7 +466,7 @@ app.get('/api/rewards/proof/:address/latest', async (req, res) => {
             .from('reward_entries')
             .select('*')
             .eq('user_address', address)
-            .eq('pool_type', 'standard')
+            .eq('pool_name', 'Standard')
             .order('epoch_id', { ascending: false })
             .limit(1)
             .single();
@@ -501,7 +501,7 @@ app.get('/api/vip/proof/:address/latest', async (req, res) => {
             .from('reward_entries')
             .select('*')
             .eq('user_address', address)
-            .eq('pool_type', 'vip')
+            .eq('pool_name', 'VIP')
             .order('epoch_id', { ascending: false })
             .limit(1)
             .single();
@@ -741,7 +741,7 @@ async function generateAndSaveEpoch(users, totalAmountWei, type = 'standard') {
     const { data: lastEpoch, error: epochError } = await supabase
         .from('reward_entries')
         .select('epoch_id')
-        .eq('pool_type', type)
+        .eq('pool_name', type)
         .order('epoch_id', { ascending: false })
         .limit(1);
         
@@ -762,7 +762,7 @@ async function generateAndSaveEpoch(users, totalAmountWei, type = 'standard') {
         user_address: user.wallet_address || user, // Handle object or string
         epoch_id: nextEpochId,
         amount: amountPerUser.toString(),
-        pool_type: type,
+        pool_name: type,
         status: 'pending'
     }));
 
@@ -792,7 +792,9 @@ async function generateAndSaveEpoch(users, totalAmountWei, type = 'standard') {
     // 5. Update Proofs in DB
     for (let i = 0; i < entries.length; i++) {
         const proof = tree.getHexProof(leaves[i]);
-        await supabase
+        console.log(`Leaf ${i}: User ${entries[i].user_address} | Proof Length: ${proof.length}`);
+        
+        const { error: updateError, count } = await supabase
             .from('reward_entries')
             .update({ 
                 proof: proof,
@@ -800,7 +802,13 @@ async function generateAndSaveEpoch(users, totalAmountWei, type = 'standard') {
             })
             .eq('user_address', entries[i].user_address)
             .eq('epoch_id', nextEpochId)
-            .eq('pool_type', type);
+            .eq('pool_name', type);
+            
+        if (updateError) {
+             console.error(`❌ Failed to update proof for ${entries[i].user_address}:`, updateError);
+        } else {
+             // console.log(`✅ Updated proof for ${entries[i].user_address}`);
+        }
     }
 
     return { merkleRoot: root, epochId: nextEpochId, count: users.length };
@@ -827,7 +835,7 @@ app.post('/api/admin/generate-epoch', async (req, res) => {
         if (uniqueUsers.length === 0) return res.status(400).json({ error: 'No eligible users found' });
 
         // 2. Generate
-        const result = await generateAndSaveEpoch(uniqueUsers, totalAmount, 'standard');
+        const result = await generateAndSaveEpoch(uniqueUsers, totalAmount, 'Standard');
         
         res.json(result);
 
@@ -862,7 +870,7 @@ app.post('/api/admin/generate-vip-epoch', async (req, res) => {
         if (vipUsers.length === 0) return res.status(400).json({ error: 'No VIP users found' });
 
         // 3. Generate
-        const result = await generateAndSaveEpoch(vipUsers, totalAmount, 'vip');
+        const result = await generateAndSaveEpoch(vipUsers, totalAmount, 'VIP');
         
         res.json(result);
 

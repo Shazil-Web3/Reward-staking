@@ -321,6 +321,13 @@ const Dashboard = () => {
 
   const handleClaimVipReward = async () => {
       if (!vipRewardStatus.eligible || vipRewardStatus.claimed) return;
+      
+      // Safety check for proof
+      if (!vipRewardStatus.proof || !Array.isArray(vipRewardStatus.proof)) {
+          alert("Error: Invalid or missing VIP reward proof. Please wait for distribution or refresh.");
+          return;
+      }
+
       try {
           setClaimingVip(true);
           
@@ -647,7 +654,7 @@ const Dashboard = () => {
 
                             <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                                 <span className="text-sm font-medium">Claimable</span>
-                                <span className="text-xl font-bold">{(rewardStatus.amount / 1e18).toFixed(4)} TOKENS</span>
+                                <span className="text-xl font-bold">{(rewardStatus.amount / 1e6).toFixed(4)} TOKENS</span>
                             </div>
                             
                             <Button 
@@ -700,14 +707,14 @@ const Dashboard = () => {
                             <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
                                 <span className="text-sm font-medium">Claimable VIP Reward</span>
                                 <span className="text-xl font-bold text-purple-600">
-                                    {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e18).toFixed(4) : "0.00"} TOKENS
+                                    {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e6).toFixed(4) : "0.00"} TOKENS
                                 </span>
                             </div>
 
                             <Button 
                                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700" 
                                 size="lg"
-                                disabled={!vipRewardStatus.eligible || claimingVip || vipRewardStatus.claimed}
+                                disabled={!vipRewardStatus.eligible || claimingVip || vipRewardStatus.claimed || vipRewardStatus.amount <= 0}
                                 onClick={handleClaimVipReward}
                             >
                                 {claimingVip ? (
