@@ -11,6 +11,7 @@ import {
 } from 'wagmi';
 import { parseUnits, formatUnits, erc20Abi, keccak256, toBytes } from 'viem';
 import StakingArtifact from './staking.json';
+import { CCT_DECIMALS, USDT_DECIMALS } from '@/config/constants';
 
 const StakingContext = createContext();
 
@@ -170,9 +171,9 @@ export const StakingProvider = ({ children }) => {
 
             console.log("🔍 DEBUG - Deposit Started. Inputs:", { stakingAmountUSD, cctAmountConverted, lockDurationYears });
 
-            // Use 6 decimals for USDT (Mock USDT on Sepolia uses 6, standard USDT uses 6)
+            // Use centralized decimals (Mock USDT on Sepolia uses 6, standard USDT uses 6)
             // Defaulting to 18 caused massive overflow/revert.
-            const decimals = 6;
+            const decimals = USDT_DECIMALS;
             console.log(`Using USDT Decimals: ${decimals}`);
 
             // Convert USD amount to USDT
@@ -217,7 +218,7 @@ export const StakingProvider = ({ children }) => {
             console.log(`💰 Fee Calculation: Gross=${cctDecimal} CCT, Fee=10%, Net=${cctDecimalNet} CCT`);
 
             // Fetch CCT Decimals dynamically to prevent precision mismatch
-            let cctDecimals = 18; // Default
+            let cctDecimals = CCT_DECIMALS; // Default from config
             try {
                 const fetchedDecimals = await publicClient.readContract({
                     address: CCT_TOKEN_ADDRESS,
@@ -419,7 +420,7 @@ export const StakingProvider = ({ children }) => {
      */
     const addStake = useCallback(async (userAddress, amount, lockDurationSeconds) => {
         try {
-            const amountBN = parseUnits(amount, 18);
+            const amountBN = parseUnits(amount, CCT_DECIMALS);
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'addStake',
@@ -440,7 +441,7 @@ export const StakingProvider = ({ children }) => {
      */
     const batchAddStakes = useCallback(async (users, amounts, lockDurations) => {
         try {
-            const amountsBN = amounts.map(amt => parseUnits(amt, 18));
+            const amountsBN = amounts.map(amt => parseUnits(amt, CCT_DECIMALS));
             const durationsBN = lockDurations.map(d => BigInt(d));
 
             const hash = await writeContract({
@@ -463,7 +464,7 @@ export const StakingProvider = ({ children }) => {
      */
     const claimReward = useCallback(async (epochId, amount, proof) => {
         try {
-            const amountBN = parseUnits(amount.toString(), 18);
+            const amountBN = parseUnits(amount.toString(), CCT_DECIMALS);
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'claimReward',
@@ -484,7 +485,7 @@ export const StakingProvider = ({ children }) => {
      */
     const claimVIPReward = useCallback(async (epochId, amount, proof) => {
         try {
-            const amountBN = parseUnits(amount.toString(), 18);
+            const amountBN = parseUnits(amount.toString(), CCT_DECIMALS);
             const hash = await writeContract({
                 ...contractConfig,
                 functionName: 'claimVIPReward',

@@ -35,6 +35,7 @@ import StakingInterface from '@/app/components/StakingInterface';
 import { supabase } from '@/lib/supabase';
 import { useStaking } from '@/context/context';
 import { formatUnits, erc20Abi } from 'viem';
+import { CCT_DECIMALS } from '@/config/constants';
 import StakingArtifact from '@/context/staking.json';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
@@ -156,7 +157,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (contractStakes && contractStakes.length > 0) {
       const formattedStakes = contractStakes.map((stake, index) => ({
-        amount: stake.cctAmount ? parseFloat(formatUnits(stake.cctAmount, 6)) : 0,
+        amount: stake.cctAmount ? parseFloat(formatUnits(stake.cctAmount, CCT_DECIMALS)) : 0,
         package_id: index,
         start_time: stake.createdAt ? new Date(Number(stake.createdAt) * 1000) : new Date(),
         end_time: stake.unlockTime ? new Date(Number(stake.unlockTime) * 1000) : new Date(),
@@ -654,7 +655,7 @@ const Dashboard = () => {
 
                             <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                                 <span className="text-sm font-medium">Claimable</span>
-                                <span className="text-xl font-bold">{(rewardStatus.amount / 1e6).toFixed(4)} TOKENS</span>
+                                <span className="text-xl font-bold">{(rewardStatus.amount / (10 ** CCT_DECIMALS)).toFixed(4)} TOKENS</span>
                             </div>
                             
                             <Button 
@@ -707,7 +708,7 @@ const Dashboard = () => {
                             <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
                                 <span className="text-sm font-medium">Claimable VIP Reward</span>
                                 <span className="text-xl font-bold text-purple-600">
-                                    {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / 1e6).toFixed(4) : "0.00"} TOKENS
+                                    {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / (10 ** CCT_DECIMALS)).toFixed(4) : "0.00"} TOKENS
                                 </span>
                             </div>
 

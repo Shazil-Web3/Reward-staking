@@ -5,6 +5,7 @@ import { useChainId } from 'wagmi';
 import { createPublicClient, http, parseUnits, formatUnits } from 'viem';
 import { bsc } from 'viem/chains';
 import { PANCAKE_ROUTER, PANCAKE_ROUTER_ABI, USDT_ADDRESS, WBNB_ADDRESS, CCT_ADDRESS } from '@/lib/pancakeswap';
+import { USDT_DECIMALS, CCT_DECIMALS } from '@/config/constants';
 
 export function usePancakePrice(usdtAmount) {
   const [cctAmount, setCctAmount] = useState(null);
@@ -36,7 +37,7 @@ export function usePancakePrice(usdtAmount) {
         
         console.log(`📡 Fetching live prices from BNB Chain (User on Chain ID: ${chainId})`);
         
-        const usdtWei = parseUnits(usdtAmount.toString(), 18);
+        const usdtWei = parseUnits(usdtAmount.toString(), USDT_DECIMALS);
 
         // Try V2 DIRECT first (USDT -> CCT)
         try {
@@ -48,7 +49,7 @@ export function usePancakePrice(usdtAmount) {
           });
           
           console.log("📊 V2 Direct RAW:", amounts);
-          const cctOut = formatUnits(amounts[1], 18);
+          const cctOut = formatUnits(amounts[1], CCT_DECIMALS);
           console.log("📊 V2 Direct Formatted:", cctOut);
           
           setCctAmount(cctOut);
@@ -68,7 +69,7 @@ export function usePancakePrice(usdtAmount) {
             });
             
             console.log("📊 V2 Hop RAW:", amounts);
-            const cctOut = formatUnits(amounts[2], 18);
+            const cctOut = formatUnits(amounts[2], CCT_DECIMALS);
             console.log("📊 V2 Hop Formatted:", cctOut);
             
             setCctAmount(cctOut);

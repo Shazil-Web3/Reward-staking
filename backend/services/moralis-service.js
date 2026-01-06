@@ -1,5 +1,7 @@
 const Moralis = require('moralis').default;
 const { ethers } = require('ethers');
+const { USDT_DECIMALS } = require('../config/constants');
+
 
 class MoralisService {
     constructor() {
@@ -139,7 +141,7 @@ class MoralisService {
 function paramsToNumber(amountStr) {
     if (!amountStr) return 0;
     // Assuming 6 decimals for USDT
-    return parseFloat(ethers.formatUnits(amountStr, 6));
+    return parseFloat(ethers.formatUnits(amountStr, USDT_DECIMALS));
 }
 
 const moralisService = new MoralisService();

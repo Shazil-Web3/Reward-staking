@@ -7,6 +7,7 @@ import { Users, AlertCircle, Loader2, CheckCircle, RefreshCw, ArrowRight, Coins 
 import { useWriteContract, usePublicClient, useReadContract } from 'wagmi';
 import { parseUnits, erc20Abi } from 'viem';
 import StakingArtifact from '@/context/staking.json';
+import { CCT_DECIMALS } from '@/config/constants';
 
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:3001';
 const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
@@ -38,7 +39,7 @@ const PoolManager = () => {
         functionName: 'decimals',
         query: { enabled: !!cctTokenAddress }
     });
-    const decimals = tokenDecimals || 18;
+    const decimals = tokenDecimals || CCT_DECIMALS;
 
     const fetchEligibleUsers = async () => {
         try {

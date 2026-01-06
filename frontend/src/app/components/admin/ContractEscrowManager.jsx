@@ -7,6 +7,7 @@ import { Wallet, Loader2, CheckCircle, AlertCircle, Coins } from 'lucide-react';
 import { useAccount, useWriteContract, usePublicClient, useReadContract } from 'wagmi';
 import { parseUnits, erc20Abi } from 'viem';
 import StakingArtifact from '@/context/staking.json';
+import { CCT_DECIMALS } from '@/config/constants';
 
 const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
 const DEFAULT_CCT_ADDRESS = process.env.NEXT_PUBLIC_CCT_TOKEN_ADDRESS;
@@ -37,7 +38,7 @@ const ContractEscrowManager = () => {
         functionName: 'decimals',
         query: { enabled: !!cctTokenAddress }
     });
-    const decimals = tokenDecimals || 18;
+    const decimals = tokenDecimals || CCT_DECIMALS;
 
     // 3. Check Allowance
     const { data: currentAllowance, refetch: refetchAllowance } = useReadContract({

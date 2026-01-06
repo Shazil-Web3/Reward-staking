@@ -7,6 +7,7 @@ const moralisService = require('./services/moralis-service');
 const crypto = require('crypto');
 const { MerkleTree } = require('merkletreejs');
 const { keccak256, solidityPackedKeccak256 } = require('ethers');
+const { CCT_DECIMALS, USDT_DECIMALS } = require('./config/constants');
 
 const app = express();
 const PORT = process.env.PORT || 3001;

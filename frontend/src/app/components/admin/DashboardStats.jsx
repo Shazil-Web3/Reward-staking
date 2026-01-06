@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useReadContract } from 'wagmi';
 import { formatUnits, erc20Abi } from 'viem';
 import StakingArtifact from '@/context/staking.json';
+import { CCT_DECIMALS } from '@/config/constants';
 
 const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS;
 // Fallback if contract read fails
@@ -35,7 +36,9 @@ const DashboardStats = () => {
         functionName: 'decimals',
         query: { enabled: !!cctTokenAddress }
     });
-    const decimals = tokenDecimals || 18;
+    // We force CCT_DECIMALS for CCT display to ensure consistency, 
+    // effectively ignoring potential RPC anomalies unless specifically needed.
+    const decimals = CCT_DECIMALS;
 
     // 3. Fetch Contract's CCT Balance (Escrow)
     const { data: contractBalance } = useReadContract({
@@ -65,12 +68,9 @@ const DashboardStats = () => {
                     .select('*', { count: 'exact', head: true });
 
                 // Format Contract Balance
-                const safeDecimals = tokenDecimals ? Number(tokenDecimals) : 18;
-                console.log("Stats Debug:", {
-                    balance: contractBalance?.toString(),
-                    decimals: safeDecimals,
-                    rawDecimals: tokenDecimals
-                });
+                const safeDecimals = CCT_DECIMALS;
+
+
 
                 const formattedBalance = contractBalance !== undefined
                     ? parseFloat(formatUnits(contractBalance, safeDecimals)).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -85,7 +85,7 @@ const DashboardStats = () => {
                         bg: "bg-blue-50 text-blue-600"
                     },
                     {
-                        title: "Contract Escrow",
+                        title: "Contract Escrow (CCT)",
                         value: `${formattedBalance} CCT`,
                         change: "Verified on-chain",
                         icon: Wallet,
@@ -106,7 +106,7 @@ const DashboardStats = () => {
         };
 
         fetchStats();
-    }, [contractBalance, decimals, contractCctAddress]); // Re-run when wagmi data changes
+    }, [contractBalance, decimals, contractCctAddress, tokenDecimals]); // Re-run when wagmi data changes
 
     return (
         <div className="grid gap-6 md:grid-cols-3">
