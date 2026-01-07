@@ -310,11 +310,11 @@ const Dashboard = () => {
               })
           });
           
-          alert('Reward claimed successfully!');
+          // alert('Reward claimed successfully!');
           checkRewardStatus();
       } catch (e) {
           console.error("Claim failed", e);
-          alert('Claim failed: ' + e.message);
+          // alert('Claim failed: ' + e.message);
       } finally {
           setClaiming(false);
       }
@@ -349,11 +349,11 @@ const Dashboard = () => {
               })
           });
           
-          alert('VIP reward claimed successfully!');
+          // alert('VIP reward claimed successfully!');
           checkVipRewardStatus();
       } catch (e) {
           console.error("VIP claim failed", e);
-          alert("VIP claim failed: " + e.message);
+          // alert("VIP claim failed: " + e.message);
       } finally {
           setClaimingVip(false);
       }

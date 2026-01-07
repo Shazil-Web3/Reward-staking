@@ -477,7 +477,8 @@ app.get('/api/rewards/proof/:address/latest', async (req, res) => {
                 eligible: true, 
                 amount: entry.amount, 
                 proof: entry.proof, 
-                epochId: entry.epoch_id 
+                epochId: entry.epoch_id,
+                claimed: entry.status === 'claimed'
             });
         } else {
              // Return reason for debug if needed, but keeping schema
@@ -508,11 +509,12 @@ app.get('/api/vip/proof/:address/latest', async (req, res) => {
             .single();
 
         if (entry) {
-              res.json({ 
+            res.json({ 
                 eligible: true, 
                 amount: entry.amount, 
                 proof: entry.proof, 
                 epochId: entry.epoch_id,
+                claimed: entry.status === 'claimed',
                 totalReferrals: counts.total,
                 directReferrals: counts.direct, 
                 indirectReferrals: counts.indirect 
@@ -539,10 +541,21 @@ app.get('/api/vip/proof/:address/latest', async (req, res) => {
 app.post('/api/rewards/mark-claimed', async (req, res) => {
     try {
         const { walletAddress, epochId } = req.body;
-        // Update reward_entries status to 'distributed' or 'claimed'
-        // For now, valid response
+        
+        const { error } = await supabase
+            .from('reward_entries')
+            .update({ status: 'claimed' })
+            .eq('user_address', walletAddress.toLowerCase())
+            .eq('epoch_id', epochId)
+            .eq('pool_name', 'Standard');
+            
+        if (error) throw error;
+
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("Error marking reward claimed:", e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 /**
@@ -550,8 +563,22 @@ app.post('/api/rewards/mark-claimed', async (req, res) => {
  */
 app.post('/api/vip/mark-claimed', async (req, res) => {
     try {
+        const { walletAddress, epochId } = req.body;
+        
+        const { error } = await supabase
+            .from('reward_entries')
+            .update({ status: 'claimed' })
+            .eq('user_address', walletAddress.toLowerCase())
+            .eq('epoch_id', epochId)
+            .eq('pool_name', 'VIP');
+            
+        if (error) throw error;
+
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("Error marking VIP reward claimed:", e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 // Helper: Get Referral Counts (Direct + Indirect)
