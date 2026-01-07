@@ -286,7 +286,7 @@ const Dashboard = () => {
       
       // Safety check for proof
       if (!rewardStatus.proof || !Array.isArray(rewardStatus.proof) || rewardStatus.proof.length === 0) {
-          alert("Error: Invalid or missing reward proof. Please refresh.");
+          console.error("Error: Invalid or missing reward proof. Please refresh.");
           return;
       }
 
@@ -322,10 +322,10 @@ const Dashboard = () => {
 
   const handleClaimVipReward = async () => {
       if (!vipRewardStatus.eligible || vipRewardStatus.claimed) return;
-      
+
       // Safety check for proof
       if (!vipRewardStatus.proof || !Array.isArray(vipRewardStatus.proof)) {
-          alert("Error: Invalid or missing VIP reward proof. Please wait for distribution or refresh.");
+          console.error("Error: Invalid or missing VIP reward proof. Please wait for distribution or refresh.");
           return;
       }
 
@@ -360,7 +360,7 @@ const Dashboard = () => {
   };
 
   const handleWithdraw = async (stakeIndex) => {
-      if (!confirm("Are you sure you want to withdraw this stake?")) return;
+      // if (!confirm("Are you sure you want to withdraw this stake?")) return;
       try {
           setWithdrawing(true);
           await withdraw(stakeIndex);
@@ -371,7 +371,7 @@ const Dashboard = () => {
           ]);
       } catch (e) {
           console.error("Withdraw failed", e);
-          alert("Withdraw failed: " + (e.message || "Unknown error"));
+          // alert("Withdraw failed: " + (e.message || "Unknown error"));
       } finally {
           setWithdrawing(false);
       }
@@ -389,7 +389,7 @@ const Dashboard = () => {
       await switchChain({ chainId: 56 });
     } catch (error) {
       console.error(error);
-      alert('Failed to switch network.');
+      console.error('Failed to switch network.');
     } finally {
       setSwitching(false);
     }
@@ -654,7 +654,7 @@ const Dashboard = () => {
                             )}
 
                             <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                                <span className="text-sm font-medium">Claimable</span>
+                                <span className="text-sm font-medium">Claimable <span className="text-xs text-muted-foreground">(5% fee)</span></span>
                                 <span className="text-xl font-bold">{(rewardStatus.amount / (10 ** CCT_DECIMALS)).toFixed(4)} TOKENS</span>
                             </div>
                             
@@ -706,7 +706,7 @@ const Dashboard = () => {
                             </div>
 
                             <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                                <span className="text-sm font-medium">Claimable VIP Reward</span>
+                                <span className="text-sm font-medium">Claimable VIP Reward <span className="text-xs text-muted-foreground">(5% fee)</span></span>
                                 <span className="text-xl font-bold text-purple-600">
                                     {vipRewardStatus.amount > 0 ? (vipRewardStatus.amount / (10 ** CCT_DECIMALS)).toFixed(4) : "0.00"} TOKENS
                                 </span>

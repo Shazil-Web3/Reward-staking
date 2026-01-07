@@ -37,7 +37,8 @@ export function usePancakePrice(usdtAmount) {
         
         console.log(`📡 Fetching live prices from BNB Chain (User on Chain ID: ${chainId})`);
         
-        const usdtWei = parseUnits(usdtAmount.toString(), USDT_DECIMALS);
+        // User requested 6 decimals for PancakeSwap pricing specifically, passing 6 instead of USDT_DECIMALS (18)
+        const usdtWei = parseUnits(usdtAmount.toString(), 6);
 
         // Try V2 DIRECT first (USDT -> CCT)
         try {

@@ -137,11 +137,12 @@ class MoralisService {
     }
 }
 
-// Helper: Convert wei string to number (USDT 6 decimals)
+// Helper: Convert wei string to number
 function paramsToNumber(amountStr) {
     if (!amountStr) return 0;
-    // Assuming 6 decimals for USDT
-    return parseFloat(ethers.formatUnits(amountStr, USDT_DECIMALS));
+    // BSC (Chain 56) uses 18 decimals for USDT. ETH uses 6.
+    const decimals = process.env.CHAIN_ID === '56' ? 18 : USDT_DECIMALS;
+    return parseFloat(ethers.formatUnits(amountStr, decimals));
 }
 
 const moralisService = new MoralisService();

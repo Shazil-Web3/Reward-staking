@@ -624,8 +624,10 @@ async function handleReferral(userAddressRaw, referralCode, depositId) {
              .single();
 
         if (currentUser && currentUser.referrer_address) {
-             console.log(`ℹ️ User ${userAddress} already has a referrer. Skipping referral logic.`);
-             return;
+             console.log(`ℹ️ User ${userAddress} already has a referrer (${currentUser.referrer_address}). Proceeding with new referral for this deposit.`);
+             // We DO NOT return here anymore. We allow per-deposit referrals.
+        } else {
+             console.log(`✨ User ${userAddress} has NO referrer. Proceeding with referral assignment.`);
         }
 
         // 1. Find Referrer by Code
@@ -662,8 +664,8 @@ async function handleReferral(userAddressRaw, referralCode, depositId) {
             });
         }
         
-        // 4. Update Referrer Link in Users Table (if not set)
-        const { data: updatedUser, error: linkError } = await supabase
+        // 4. Update Referrer Link in Users Table (Try to set as primary if NULL)
+        const { data: updatedUser } = await supabase
             .from('users')
             .update({ referrer_address: referrerAddress })
             .eq('wallet_address', userAddress)
@@ -671,10 +673,24 @@ async function handleReferral(userAddressRaw, referralCode, depositId) {
             .select();
 
         if (updatedUser && updatedUser.length > 0) {
-            console.log(`🔗 Linked ${userAddress} to referrer ${referrerAddress}`);
-            
-            // Increment Direct Referrals Count for the Referrer
-            // We fetch the current count first to be safe
+            console.log(`🔗 Linked ${userAddress} to primary referrer ${referrerAddress}`);
+        } else {
+             console.log(`ℹ️ User ${userAddress} already has a primary referrer. Keeping existing link.`);
+        }
+
+        // 5. Update Referrer's Stats (Decoupled from Primary Link)
+        // We want to increment the count ONLY if this is the first time THIS referrer has referred THIS user.
+        
+        // Count how many times this referrer has referred this user
+        const { count: interactionCount, error: countError } = await supabase
+            .from('referrals')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_address', userAddress)
+            .eq('referrer_address', referrerAddress);
+        
+        // If interactionCount is 1, it means this is the first time (the one we just inserted in step 2).
+        // If it's > 1, they've done this before.
+        if (interactionCount === 1) {
             const { data: currentReferrer } = await supabase
                 .from('users')
                 .select('direct_referrals_count')
@@ -690,7 +706,7 @@ async function handleReferral(userAddressRaw, referralCode, depositId) {
                 console.log(`📈 Incremented referral count for ${referrerAddress} to ${newCount}`);
             }
         } else {
-             console.log(`ℹ️ User ${userAddress} already has a referrer or update failed.`);
+            console.log(`ℹ️ User ${userAddress} has already been referred by ${referrerAddress} before. No stat increment.`);
         }
 
     } catch (error) {

@@ -322,7 +322,7 @@ export const StakingProvider = ({ children }) => {
                 , 2));
 
             // Temporary alert for debugging on frontend
-            alert(`Transaction Failed at step: ${step}\n\nReason: ${error.details || error.shortMessage || error.message}`);
+            // alert(`Transaction Failed at step: ${step}\\n\\nReason: ${error.details || error.shortMessage || error.message}`);
 
             setIsLoading(false);
             throw error;

@@ -20,7 +20,7 @@ contract StakingHub is Ownable {
     IERC20 public immutable cctToken;
     address public treasury;
     
-    uint256 public minDepositAmount = 50e6; // 50 USDT
+    uint256 public minDepositAmount = 100000; // 0.1 USDT
 
     // --- Staking State ---
     struct Stake {
@@ -157,7 +157,11 @@ contract StakingHub is Ownable {
         
         stake.withdrawn = true;
         
-        bool success = cctToken.transfer(msg.sender, stake.cctAmount);
+        // 5% Fee Calculation
+        uint256 fee = (stake.cctAmount * 5) / 100;
+        uint256 netAmount = stake.cctAmount - fee;
+
+        bool success = cctToken.transfer(msg.sender, netAmount);
         require(success, "CCT transfer failed");
         
         emit StakeWithdrawn(msg.sender, index, stake.cctAmount);
@@ -205,7 +209,11 @@ contract StakingHub is Ownable {
             "Insufficient CCT for rewards"
         );
         
-        bool success = cctToken.transfer(msg.sender, amount);
+        // 5% Fee Calculation
+        uint256 fee = (amount * 5) / 100;
+        uint256 netAmount = amount - fee;
+
+        bool success = cctToken.transfer(msg.sender, netAmount);
         require(success, "Reward transfer failed");
         
         emit RewardClaimed(msg.sender, epochId, amount, block.timestamp);
@@ -242,7 +250,11 @@ contract StakingHub is Ownable {
             "Insufficient CCT for VIP rewards"
         );
         
-        bool success = cctToken.transfer(msg.sender, amount);
+        // 5% Fee Calculation
+        uint256 fee = (amount * 5) / 100;
+        uint256 netAmount = amount - fee;
+
+        bool success = cctToken.transfer(msg.sender, netAmount);
         require(success, "VIP reward transfer failed");
         
         emit VIPRewardClaimed(msg.sender, epochId, amount, block.timestamp);

@@ -65,8 +65,8 @@ const StakingInterface = () => {
     setStakingAmount(value);
 
     const numValue = parseFloat(value);
-    if (value && numValue < 1) {
-      setError('Minimum staking amount is $1');
+    if (value && numValue < 0.1) {
+      setError('Minimum staking amount is $0.1');
     } else {
       setError('');
     }
@@ -74,8 +74,8 @@ const StakingInterface = () => {
 
   const handleInitiateStake = () => {
     const amount = parseFloat(stakingAmount);
-    if (!stakingAmount || amount < 1) {
-      setError('Minimum staking amount is $1');
+    if (!stakingAmount || amount < 0.1) {
+      setError('Minimum staking amount is $0.1');
       return;
     }
 
@@ -228,8 +228,8 @@ const StakingInterface = () => {
                 type="number"
                 value={stakingAmount}
                 onChange={handleAmountChange}
-                placeholder="Enter amount (minimum $50)"
-                min="50"
+                placeholder="Enter amount (minimum $0.1)"
+                min="0.1"
                 step="1"
                 disabled={isLoading}
                 className={`w-full p-3 border rounded-lg bg-background pl-8 ${error ? 'border-red-500 bg-red-50' : ''
@@ -275,7 +275,7 @@ const StakingInterface = () => {
         </div>
 
         {/* Live PancakeSwap Price */}
-        {stakingAmount && parseFloat(stakingAmount) >= 1 && (
+        {stakingAmount && parseFloat(stakingAmount) >= 0.1 && (
           <Card className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950 border-2  border-blue-200">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
@@ -306,13 +306,7 @@ const StakingInterface = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded">
-                    <p className="text-blue-700 dark:text-blue-300">Price (1 CCT)</p>
-                    <p className="font-semibold text-blue-900 dark:text-blue-100">
-                      ~${pricePerToken ? pricePerToken.toFixed(6) : '0.00'}
-                    </p>
-                  </div>
+                <div className="text-xs">
                   <div className="p-2 bg-cyan-100 dark:bg-cyan-900 rounded">
                     <p className="text-cyan-700 dark:text-cyan-300">Before Fee</p>
                     <p className="font-semibold text-cyan-900 dark:text-cyan-100">
@@ -345,7 +339,7 @@ const StakingInterface = () => {
         )}
 
         {/* Staking Details */}
-        {stakingAmount && parseFloat(stakingAmount) >= 1 && (
+        {stakingAmount && parseFloat(stakingAmount) >= 0.1 && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-3">Staking Summary</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -387,7 +381,7 @@ const StakingInterface = () => {
         {/* Stake Button */}
         <Button
           onClick={handleInitiateStake}
-          disabled={!stakingAmount || parseFloat(stakingAmount) < 1 || !!error || isLoading}
+          disabled={!stakingAmount || parseFloat(stakingAmount) < 0.1 || !!error || isLoading}
           className="w-full gradient-primary text-white border-0 hover:opacity-90 transition-opacity h-12 text-lg font-semibold"
         >
           {isLoading ? (
